@@ -1,0 +1,110 @@
+# The whole stack: Postgres, Spring, Next.
+#
+#   cp .env.example .env
+#   # put a JWT_SECRET in it -- the backend refuses to start without one
+#   docker compose up --build
+#
+# Then http://localhost:3000, and sign in as `admin` with DEV_SEED_PASSWORD.
+#
+# ---------------------------------------------------------------------------
+# The one trap in this file
+# ---------------------------------------------------------------------------
+# NEXT_PUBLIC_API_BASE_URL is `http://localhost:8080`, NOT `http://backend:8080`.
+#
+# `backend` is a name on the compose network. The code that uses this URL runs in
+# the user's browser, which is not on that network and cannot resolve it. The
+# browser calls Spring directly -- there is no proxy route in the Next app, on
+# purpose -- so the value has to be the address the host published, and the
+# backend's CORS_ALLOWED_ORIGINS has to name the origin the browser came from.
+# Those two settings are a pair; changing one without the other breaks sign-in
+# with a CORS error that looks like an auth bug.
+#
+# It is also a *build* argument, not an environment variable, because
+# NEXT_PUBLIC_* is inlined into the bundle by `next build`. Setting it in
+# `environment:` would be read by nothing. See frontend/Dockerfile.
+
+name: hostel-ops
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-hostelops}
+      POSTGRES_USER: ${DATABASE_USERNAME:-hostelops}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-hostelops}
+    ports:
+      # Published so a psql session or a JDBC tool can reach it while debugging.
+      # Drop this line for anything resembling a deployment.
+      - "${DATABASE_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` with an explicit user: the default checks the OS user, which
+      # is not the role the application connects as.
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME:-hostelops} -d ${DATABASE_NAME:-hostelops}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    depends_on:
+      db:
+        # service_healthy, not the default service_started. Flyway runs during
+        # startup, and a container that is merely "started" is not yet accepting
+        # connections -- the backend would crash on the first migration.
+        condition: service_healthy
+    environment:
+      # `dev` activates DevDataSeeder, which creates admin / lh_warden /
+      # mh_warden and six students. It is idempotent and it seeds nothing at all
+      # unless DEV_SEED_PASSWORD is set.
+      SPRING_PROFILES_ACTIVE: dev
+      DEV_SEED_PASSWORD: ${DEV_SEED_PASSWORD:-}
+
+      # `db` resolves here, unlike in the browser: this connection is made from
+      # inside the compose network.
+      DATABASE_URL: jdbc:postgresql://db:5432/${DATABASE_NAME:-hostelops}
+      DATABASE_USERNAME: ${DATABASE_USERNAME:-hostelops}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-hostelops}
+
+      # No default, deliberately. An unset JWT_SECRET stops the application
+      # instead of falling back to a value anyone could mint an admin token with.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env -- see .env.example}
+
+      # The origin the browser will be on. Must match the frontend's published
+      # port, or every authenticated request fails preflight.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+
+      # The refresh cookie is Secure by default and http://localhost is not
+      # secure, so the browser would silently drop it and every session would
+      # end at the first token refresh. False here, never in a deployment.
+      REFRESH_COOKIE_SECURE: "false"
+
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-mock}
+      SCHEDULING_ENABLED: ${SCHEDULING_ENABLED:-true}
+      APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Build-time, and the host-published backend address. See the header.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
+    depends_on:
+      backend:
+        # Only service_started. The console renders its own error states when the
+        # API is unreachable, so making the page wait on Spring's health buys
+        # nothing and hides a class of bug worth seeing.
+        condition: service_started
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    restart: unless-stopped
+
+volumes:
+  db-data:

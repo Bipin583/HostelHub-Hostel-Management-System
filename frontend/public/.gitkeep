@@ -1,0 +1,8 @@
+This directory is intentionally empty.
+
+There are no static assets yet — the favicon lives in src/app/, as the App Router
+expects. The directory itself is kept because frontend/Dockerfile copies it into
+the runtime image, and `COPY` has no way to skip a path that does not exist: an
+absent public/ fails the image build rather than being ignored.
+
+Delete this file the moment there is a real asset beside it.

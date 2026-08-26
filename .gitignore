@@ -1,0 +1,17 @@
+# Root-level ignores only. backend/.gitignore and frontend/.gitignore cover their
+# own build output; this file covers the things that live between them.
+
+# Compose configuration. .env.example is committed and is the documentation;
+# .env holds a real JWT_SECRET and a seed password and must never be.
+.env
+.env.local
+.env.*.local
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*~

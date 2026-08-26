@@ -1,0 +1,18 @@
+# Kept out of the build context: anything here would be sent to the daemon, and
+# `target/` alone is tens of megabytes of output the build is about to recreate.
+target/
+.mvn/wrapper/*.jar
+.git/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+*.iml
+HELP.md
+Dockerfile
+.dockerignore
+
+# Never copy a local environment file into an image. Configuration arrives as
+# environment variables at run time; a baked .env is a secret in a layer.
+.env
+.env.*

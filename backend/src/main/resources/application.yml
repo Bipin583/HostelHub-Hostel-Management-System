@@ -1,0 +1,125 @@
+spring:
+  application:
+    name: hostel-ops-backend
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/hostelops}
+    username: ${DATABASE_USERNAME:hostelops}
+    password: ${DATABASE_PASSWORD:hostelops}
+    hikari:
+      maximum-pool-size: ${DATABASE_POOL_SIZE:10}
+      # A request that cannot get a connection should fail fast rather than
+      # pile up behind a lock it is waiting on.
+      connection-timeout: 5000
+
+  jpa:
+    # The schema is owned by Flyway. Hibernate never infers or alters it.
+    # Entity/schema agreement is asserted by SchemaAgreementIT (which boots
+    # with ddl-auto=validate) so drift fails CI instead of a production start.
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+          batch_size: 25
+        order_inserts: true
+        order_updates: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+  threads:
+    virtual:
+      enabled: false
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    # Belt and braces alongside GlobalExceptionHandler: even the container's
+    # own fallback error page must not describe our internals to a client.
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
+    include-exception: false
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+
+springdoc:
+  # Set SPRINGDOC_ENABLED=false in production: the docs then 404 outright rather
+  # than relying on the security matchers to hide them.
+  api-docs:
+    enabled: ${SPRINGDOC_ENABLED:true}
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: ${SPRINGDOC_ENABLED:true}
+    path: /swagger-ui.html
+    disable-swagger-default-url: true
+
+logging:
+  level:
+    root: INFO
+    com.hostelops: ${APP_LOG_LEVEL:INFO}
+
+app:
+  jwt:
+    issuer: hostel-ops
+    # No default. A missing secret must stop the application, not fall back to
+    # a well-known value that would let anyone mint an admin token.
+    secret: ${JWT_SECRET:}
+    access-token-ttl: PT15M
+    refresh-token-ttl: P30D
+    # Refresh tokens are returned in an httpOnly cookie; set false only when a
+    # non-browser client needs the token in the response body.
+    refresh-cookie:
+      name: hostelops_refresh
+      path: /api/v1/auth
+      secure: ${REFRESH_COOKIE_SECURE:true}
+      same-site: Strict
+
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
+  rate-limit:
+    # Replaces django-axes. Applied per (username, client IP) pair, because a
+    # campus behind one NAT address must not lock itself out collectively.
+    auth:
+      enabled: true
+      capacity: 5
+      refill-tokens: 5
+      refill-period: PT15M
+
+  attendance:
+    # Only working days count towards an absence streak.
+    absence-alert-threshold: 10
+    weekend-days: SATURDAY,SUNDAY
+    holidays: ""
+
+  payments:
+    # Swappable gateway. `mock` settles locally; `razorpay` talks to the real
+    # provider. No provider name is hardcoded outside its own adapter.
+    provider: ${PAYMENT_PROVIDER:mock}
+    razorpay:
+      key-id: ${RAZORPAY_KEY_ID:}
+      key-secret: ${RAZORPAY_KEY_SECRET:}
+
+  scheduling:
+    enabled: ${SCHEDULING_ENABLED:true}
+    fee-reminder-cron: "0 17 7 * * *"
+    absence-scan-cron: "0 23 6 * * *"

@@ -1,0 +1,19 @@
+# node_modules is reinstalled from the lockfile inside the image; copying a
+# host-built one in would ship whatever platform binaries this machine has.
+node_modules/
+.next/
+out/
+build/
+.git/
+.gitignore
+Dockerfile
+.dockerignore
+npm-debug.log*
+*.tsbuildinfo
+next-env.d.ts
+
+# Never copy a local environment file into an image. NEXT_PUBLIC_* values are
+# inlined at build time and become public; they arrive as --build-arg, not from a
+# file that might also hold a mock gateway secret.
+.env
+.env.*

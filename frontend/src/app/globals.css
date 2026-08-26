@@ -1,0 +1,1269 @@
+/*
+ * The whole design system: tokens, layout, and the dozen components this console
+ * is built from.
+ *
+ * WHY THIS IS HAND-WRITTEN
+ *
+ * No Tailwind, no MUI, no shadcn. Two reasons, and neither is nostalgia.
+ *
+ * First, a component library would answer the interesting questions before they were
+ * asked. "How does a warden scan a register of two hundred rows" and "what does an
+ * unacknowledged alert look like next to an acknowledged one" are product questions;
+ * importing a `<DataGrid>` replaces them with a configuration exercise, and the
+ * result looks like every other project that imported the same grid.
+ *
+ * Second, a utility framework moves the styling into the markup. `className="flex
+ * items-center gap-2 rounded-md border px-3 py-1.5 text-sm"` repeated across forty
+ * components is the same duplication a stylesheet exists to remove, and it makes a
+ * component's JSX unreadable in a code review -- which is the one thing this project
+ * cannot afford, since being read *is* the point.
+ *
+ * So: custom properties for the values, one class per component, and no build step
+ * beyond the one Next already runs.
+ *
+ * HOW THE COLOURS WORK
+ *
+ * Every colour is a token, and no rule below contains a literal hex value. The dark
+ * theme then exists entirely as a second block that redefines the same tokens --
+ * which is the only reason a dark mode stays correct as pages are added, because a
+ * new page cannot forget to handle it. Tokens are semantic (`--surface`, `--border`,
+ * `--danger`) rather than descriptive (`--grey-200`): a rule that says `background:
+ * var(--surface-raised)` still reads correctly after the palette changes, and one
+ * that says `--grey-100` does not.
+ */
+
+/* ------------------------------------------------------------------ tokens */
+
+:root {
+  color-scheme: light;
+
+  /* Neutrals. A slight blue cast, because a pure grey next to the accent reads
+     as brown on cheap panels. */
+  --canvas: #f6f7f9;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f0f2f5;
+  --surface-hover: #f2f4f7;
+
+  --border: #dfe3e8;
+  --border-strong: #c4cad2;
+
+  --text: #16191d;
+  --text-muted: #5b6470;
+  --text-faint: #868f9b;
+  --text-inverse: #ffffff;
+
+  /* Accent: indigo. Distinct from the semantic colours below at a glance, which
+     matters because "the primary action" and "this is fine" must not look alike. */
+  --accent: #3b4ee0;
+  --accent-hover: #3243c6;
+  --accent-soft: #eaecfd;
+  --accent-text: #2a37a8;
+
+  /* Semantic. Each has a solid, a wash for badge backgrounds, and a readable text
+     tone -- a badge needs all three and guessing the third is how contrast breaks. */
+  --success: #17784f;
+  --success-soft: #e3f5ec;
+  --success-text: #0f5c3c;
+
+  --warning: #9a6400;
+  --warning-soft: #fdf0d8;
+  --warning-text: #7a4f00;
+
+  --danger: #c02526;
+  --danger-soft: #fdeaea;
+  --danger-text: #93191a;
+
+  --info: #12657f;
+  --info-soft: #e2f2f7;
+  --info-text: #0d4d61;
+
+  /* Spacing: a 4px scale. Enough steps to be expressive, few enough that two
+     adjacent paddings are never one pixel apart by accident. */
+  --s1: 0.25rem;
+  --s2: 0.5rem;
+  --s3: 0.75rem;
+  --s4: 1rem;
+  --s5: 1.5rem;
+  --s6: 2rem;
+  --s7: 3rem;
+
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* Two shadows, not five. A raised card and a floating dialog are the only two
+     elevations this app actually has. */
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.18);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  /* Tabular figures for money and ids -- a column of rupees with proportional
+     digits does not line up, and misaligned amounts are genuinely harder to scan. */
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Consolas, monospace;
+
+  --sidebar-width: 240px;
+  --topbar-height: 56px;
+  --content-max: 1160px;
+}
+
+/*
+ * Dark theme.
+ *
+ * Surfaces get *lighter* as they rise, which is the inverse of the light theme,
+ * where they get whiter and shadows do the lifting. Shadows are nearly invisible on
+ * a dark background, so elevation has to come from the surface itself.
+ *
+ * The semantic washes are not the light values darkened. A 10%-opacity red over a
+ * near-black background is a muddy brown; these are hand-picked so a danger badge
+ * still reads as danger.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --canvas: #101215;
+    --surface: #171a1f;
+    --surface-raised: #1e2228;
+    --surface-sunken: #13161a;
+    --surface-hover: #23282f;
+
+    --border: #2b3138;
+    --border-strong: #3c444e;
+
+    --text: #e9ecf1;
+    --text-muted: #a3adba;
+    --text-faint: #7b8592;
+    --text-inverse: #0f1114;
+
+    --accent: #7d8cff;
+    --accent-hover: #929ffe;
+    --accent-soft: #21264a;
+    --accent-text: #b3bcff;
+
+    --success: #48b98a;
+    --success-soft: #14301f;
+    --success-text: #7fd7ae;
+
+    --warning: #dfa63a;
+    --warning-soft: #33260d;
+    --warning-text: #edc478;
+
+    --danger: #f0666a;
+    --danger-soft: #38181b;
+    --danger-text: #f7a1a3;
+
+    --info: #56b3cc;
+    --info-soft: #122b33;
+    --info-text: #90d3e4;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
+  }
+}
+
+/* ------------------------------------------------------------------- reset */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+dl,
+dd {
+  margin: 0;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 1.125rem;
+  font-weight: 620;
+}
+
+h3 {
+  font-size: 0.9375rem;
+  font-weight: 620;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/*
+ * One focus ring, defined once, for everything.
+ *
+ * `:focus-visible` rather than `:focus` so a mouse click on a button does not leave
+ * a ring behind, while every keyboard path keeps one. The `outline-offset` is what
+ * makes the ring legible on the accent-filled primary button, where a flush outline
+ * disappears into the fill.
+ */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/*
+ * Respect a stated preference for less motion. The only animations here are short
+ * transitions and one spinner, but "only a spinner" is exactly the sort of thing
+ * that triggers vestibular symptoms.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* --------------------------------------------------------------- app shell */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+  padding: var(--s4) var(--s3);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  padding: var(--s2) var(--s2) 0;
+}
+
+.brand-name {
+  font-size: 1.0625rem;
+  font-weight: 680;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+
+.brand-scope {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-group-label {
+  font-size: 0.6875rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-faint);
+  padding: var(--s3) var(--s2) var(--s1);
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-weight: 500;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.nav-link:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+  text-decoration: none;
+}
+
+/*
+ * The active link is marked by weight and colour, not only by background. A
+ * background-only cue vanishes for anyone with a low-contrast display or a
+ * forced-colours mode.
+ */
+.nav-link[aria-current='page'] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 620;
+}
+
+.nav-count {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+  padding: var(--s3) var(--s2) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.who-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.who-role {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* Without this, a wide table stretches the grid column instead of scrolling. */
+}
+
+.topbar {
+  height: var(--topbar-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: 0 var(--s5);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.content {
+  padding: var(--s5);
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+
+/*
+ * Below 900px the sidebar becomes a horizontal strip above the content. A drawer
+ * with a hamburger would be more fashionable and would also hide the navigation
+ * behind a tap on the screens where orientation matters most.
+ */
+@media (max-width: 900px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .nav-group-label {
+    display: none;
+  }
+
+  .content {
+    padding: var(--s4);
+  }
+}
+
+/* ---------------------------------------------------------------- headings */
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+
+.page-sub {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin-top: var(--s1);
+}
+
+.crumb {
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+  margin-bottom: var(--s1);
+}
+
+/* ------------------------------------------------------------------- cards */
+
+.card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s4) var(--s5);
+  border-bottom: 1px solid var(--border);
+}
+
+.card-body {
+  padding: var(--s5);
+}
+
+.card-body-tight {
+  padding: var(--s3) var(--s4);
+}
+
+.card-foot {
+  padding: var(--s3) var(--s5);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+/* A card whose body is a table: the table draws its own edges. */
+.card-flush > .card-body {
+  padding: 0;
+}
+
+/* -------------------------------------------------------------- stat tiles */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--s4);
+}
+
+.stat {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--s4) var(--s5);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  font-weight: 620;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 660;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-note {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+/* A tile that is a link to the thing it counts. */
+a.stat:hover {
+  border-color: var(--border-strong);
+  text-decoration: none;
+}
+
+/* ------------------------------------------------------------------ tables */
+
+/*
+ * The wrapper scrolls, not the page.
+ *
+ * The attendance register and the audit log are genuinely wide. Letting the document
+ * scroll sideways moves the navigation off screen with it; confining the overflow
+ * here keeps the shell fixed and the horizontal scrollbar attached to the data it
+ * belongs to.
+ */
+.table-wrap {
+  overflow-x: auto;
+}
+
+table.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table thead th {
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunken);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.table tbody td {
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+/* Numbers right-aligned and tabular, so a column of amounts can be compared by eye. */
+.table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.table .shrink {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.cell-strong {
+  font-weight: 600;
+}
+
+.cell-sub {
+  display: block;
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+/* ------------------------------------------------------------------ badges */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 2px var(--s2);
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 620;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.badge-neutral {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+.badge-success {
+  background: var(--success-soft);
+  color: var(--success-text);
+}
+
+.badge-warning {
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+
+.badge-danger {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.badge-info {
+  background: var(--info-soft);
+  color: var(--info-text);
+}
+
+.badge-accent {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+/* A dot for urgency, where the colour is the whole message and a word would repeat
+   the adjacent column. */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+}
+
+.dot-low {
+  background: var(--text-faint);
+}
+
+.dot-medium {
+  background: var(--info);
+}
+
+.dot-high {
+  background: var(--warning);
+}
+
+.dot-critical {
+  background: var(--danger);
+}
+
+/* ----------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s4);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-inverse);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+/*
+ * Destructive actions are outlined, not filled.
+ *
+ * A solid red button is the most visually dominant thing on a page, which is exactly
+ * wrong for "vacate this room" sitting next to "save". The colour carries the
+ * warning; the weight is left to the primary action.
+ */
+.btn-danger {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--surface-raised);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.btn-sm {
+  padding: var(--s1) var(--s2);
+  font-size: 0.8125rem;
+}
+
+.btn-link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+/* The pending state on a submit: a ring, not a replaced label, so the button does
+   not change width mid-click and the text stays readable. */
+.spinner {
+  width: 0.875em;
+  height: 0.875em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  flex: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ------------------------------------------------------------------- forms */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+}
+
+.field-label {
+  font-size: 0.8125rem;
+  font-weight: 620;
+  color: var(--text-muted);
+}
+
+.field-hint {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+/*
+ * A field error is text, not a red border alone.
+ *
+ * Colour by itself excludes anyone who cannot distinguish it, and `aria-describedby`
+ * needs something to point at. The border still turns red as a second, redundant
+ * cue -- which is the rule for every state in this file.
+ */
+.field-error {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--danger-text);
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.875rem;
+}
+
+.textarea {
+  min-height: 6.5rem;
+  resize: vertical;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--text-faint);
+}
+
+.input:disabled,
+.select:disabled,
+.textarea:disabled {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.input[aria-invalid='true'],
+.select[aria-invalid='true'],
+.textarea[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--s4);
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+/* A row of filters above a table. Wraps rather than compressing the controls. */
+.filters {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.filters .field {
+  min-width: 150px;
+}
+
+/* ----------------------------------------------------------------- notices */
+
+.notice {
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  padding: var(--s3) var(--s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  font-size: 0.875rem;
+}
+
+.notice-title {
+  font-weight: 650;
+}
+
+.notice-error {
+  background: var(--danger-soft);
+  border-left-color: var(--danger);
+  color: var(--danger-text);
+}
+
+.notice-warning {
+  background: var(--warning-soft);
+  border-left-color: var(--warning);
+  color: var(--warning-text);
+}
+
+.notice-success {
+  background: var(--success-soft);
+  border-left-color: var(--success);
+  color: var(--success-text);
+}
+
+.notice-info {
+  background: var(--info-soft);
+  border-left-color: var(--info);
+  color: var(--info-text);
+}
+
+/* The trace id on an error, small and monospaced: it is for pasting into a log
+   search, not for reading. */
+.notice-trace {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  opacity: 0.8;
+}
+
+/* --------------------------------------------------- empty and loading states */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s7) var(--s5);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.empty-title {
+  font-weight: 620;
+  color: var(--text);
+}
+
+/*
+ * Skeletons rather than a centred spinner.
+ *
+ * A spinner discards the layout and then throws it back, which on a table-heavy
+ * page is a visible jump on every navigation. Placeholder rows of roughly the right
+ * shape keep the page still.
+ */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-sunken), var(--surface-hover), var(--surface-sunken));
+  background-size: 200% 100%;
+  animation: shimmer 1.3s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+  height: 0.875rem;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s4);
+}
+
+/* ---------------------------------------------------------------- pagination */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.pager-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+/* --------------------------------------------------------------- dialogs */
+
+/*
+ * Built on `<dialog>`, so focus trapping, Escape, and the top layer come from the
+ * platform instead of from a hand-rolled portal plus keydown handler.
+ */
+dialog.dialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  padding: 0;
+  width: min(520px, calc(100vw - 2rem));
+  max-height: calc(100vh - 4rem);
+  overflow: auto;
+}
+
+dialog.dialog::backdrop {
+  background: rgba(10, 12, 16, 0.5);
+}
+
+.dialog-head {
+  padding: var(--s4) var(--s5);
+  border-bottom: 1px solid var(--border);
+}
+
+.dialog-body {
+  padding: var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.dialog-foot {
+  padding: var(--s3) var(--s5) var(--s4);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s3);
+}
+
+/* -------------------------------------------------------------- data viz */
+
+/*
+ * The attendance trend and the complaint mix are drawn with divs, not a charting
+ * library. Both are single-series comparisons where the shape matters and the exact
+ * value is in a tooltip or an adjacent column -- a 40kB chart runtime for that is a
+ * dependency to explain, not a feature.
+ */
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 120px;
+}
+
+.bar-col {
+  flex: 1;
+  min-width: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  overflow: hidden;
+  background: var(--surface-sunken);
+}
+
+.bar-present {
+  background: var(--accent);
+}
+
+.bar-absent {
+  background: var(--danger);
+}
+
+.bar-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.6875rem;
+  color: var(--text-faint);
+  margin-top: var(--s1);
+}
+
+/* A horizontal meter, for occupancy and collection rate. */
+.meter {
+  /* `display: block` so the track works as a <span> too -- a bare inline element
+     ignores height, which would silently render the meter as a hairline. */
+  display: block;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+}
+
+.meter-fill-warning {
+  background: var(--warning);
+}
+
+.meter-fill-danger {
+  background: var(--danger);
+}
+
+/* --------------------------------------------------------------- utilities */
+
+/*
+ * A short, closed list. These exist because writing a one-off class for "these two
+ * things sit in a row" produces a stylesheet nobody can navigate. It stops here:
+ * anything that needs a third property gets a named component class instead, which
+ * is the line a utility framework does not draw.
+ */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.stack-sm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.row-tight {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.spread {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--s4);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.faint {
+  color: var(--text-faint);
+}
+
+.small {
+  font-size: 0.8125rem;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.right {
+  margin-left: auto;
+}
+
+.nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A definition list used for detail pages: label above value, in a wrapping grid. */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--s4);
+}
+
+.fact-label {
+  font-size: 0.75rem;
+  font-weight: 620;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+
+.fact-value {
+  font-size: 0.9375rem;
+}
+
+/* Screen-reader-only: for the label of a control whose purpose is obvious visually
+   from position alone, such as a search box with a magnifier. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ------------------------------------------------------------ login screen */
+
+/*
+ * The one page with no shell: it is the only route reachable while anonymous, so it
+ * cannot use the nav, and centring it is the clearest signal that nothing else is
+ * available yet.
+ */
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--s5);
+  background: var(--canvas);
+}
+
+.auth-card {
+  width: min(400px, 100%);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--s6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.auth-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.auth-title {
+  font-size: 1.375rem;
+  font-weight: 680;
+  letter-spacing: -0.015em;
+}

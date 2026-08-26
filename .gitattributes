@@ -1,0 +1,32 @@
+# Line endings, decided here rather than left to whatever core.autocrlf each
+# machine happens to have. backend/.gitattributes already does this for the Maven
+# wrapper; this file covers everything between the two halves.
+#
+# It matters for exactly one reason: a shell script or Dockerfile committed with
+# CRLF fails on a Linux CI runner with `bad interpreter: /bin/sh^M`, and the error
+# names the interpreter rather than the line endings, so it reads as a broken
+# image instead of a broken checkout.
+
+# Normalise to LF in the repository; check out native in the working tree.
+* text=auto
+
+# Executed by Linux. LF is not a preference here.
+*.sh          text eol=lf
+Dockerfile    text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+
+# Windows batch files break the other way.
+*.cmd         text eol=crlf
+*.bat         text eol=crlf
+
+# Never touched: a normalised binary is a corrupted binary.
+*.jar         binary
+*.png         binary
+*.jpg         binary
+*.jpeg        binary
+*.gif         binary
+*.ico         binary
+*.woff        binary
+*.woff2       binary
+*.pdf         binary

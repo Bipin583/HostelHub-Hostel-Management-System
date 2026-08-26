@@ -1,0 +1,53 @@
+# Profile for every *IT.
+#
+# The datasource URL is deliberately absent: Testcontainers starts Postgres and
+# @ServiceConnection injects host, port and credentials at context startup. A URL
+# here would be a second source of truth that silently wins on some runs.
+spring:
+  datasource:
+    hikari:
+      # AllocationConcurrencyIT fires N simultaneous requests, and each one holds
+      # its connection for the whole transaction while blocked on the room's row
+      # lock. With a pool smaller than N the extra threads would queue for a
+      # connection rather than for the lock, and the test would be measuring
+      # HikariCP instead of the thing it claims to measure.
+      maximum-pool-size: 32
+      # The main profile uses 5s. Under deliberate lock contention a request can
+      # legitimately wait longer than that, and a pool timeout surfaces as a 500,
+      # which would look like the bug the test is hunting for.
+      connection-timeout: 30000
+  jpa:
+    hibernate:
+      # Flyway owns the schema here exactly as it does in production. Only
+      # SchemaAgreementIT raises this to `validate`, and only to compare.
+      ddl-auto: none
+  flyway:
+    enabled: true
+
+app:
+  jwt:
+    # Not a secret. This key signs tokens against a database that exists for the
+    # duration of one build and is thrown away with the container.
+    secret: integration-test-signing-key-not-used-in-any-real-environment
+    refresh-cookie:
+      # The test client speaks plain HTTP to a random localhost port.
+      secure: false
+  rate-limit:
+    auth:
+      # Off, not merely generous. AuthFlowIT signs in repeatedly on purpose; a
+      # test must fail for its own reasons and never because it tripped a
+      # throttle that has its own unit tests.
+      enabled: false
+  scheduling:
+    # No cron trigger may fire in the middle of an assertion. The scheduled jobs
+    # are tested by invoking them directly, which is also the only way to assert
+    # that running one twice changes nothing.
+    enabled: false
+
+logging:
+  level:
+    org.testcontainers: WARN
+    tc: WARN
+    com.github.dockerjava: WARN
+    org.flywaydb: INFO
+    com.hostelops: INFO
