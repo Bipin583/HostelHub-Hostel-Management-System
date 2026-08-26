@@ -1,7 +1,7 @@
 # The gate. Three jobs, run in parallel, all required.
 #
-# The reason this file matters more than most CI configs: nine integration test
-# classes in this repository have never run on the machine they were written on,
+# The reason this file matters more than most CI configs: eight integration test
+# classes -- 98 tests -- have never run on the machine they were written on,
 # because Testcontainers needs a Docker daemon and that machine has none. GitHub's
 # ubuntu runners have one. This workflow is the first place the concurrency
 # suite -- bed allocation, payment idempotency, reminder and absence-scan
