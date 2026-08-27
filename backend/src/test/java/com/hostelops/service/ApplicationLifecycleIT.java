@@ -73,7 +73,13 @@ class ApplicationLifecycleIT extends AbstractPostgresIT {
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
             assertThat(body(response).path("status").asText()).isEqualTo("PENDING");
             assertThat(body(response).path("rollNumber").asText()).isEqualTo(student.rollNumber());
-            assertThat(body(response).path("decidedAt").isNull()).isTrue();
+            // hasNonNull, not path(...).isNull(): the app serialises with
+            // default-property-inclusion=non_null, so an undecided application omits
+            // decidedAt rather than sending it as null. path() then returns a
+            // MissingNode, whose isNull() is false -- isMissingNode() is the true one.
+            // hasNonNull asks the question the lifecycle actually cares about (is there
+            // a decision timestamp at all) and stays right if that setting ever changes.
+            assertThat(body(response).hasNonNull("decidedAt")).isFalse();
             assertThat(allocationStateOf(student.studentId())).isEqualTo(AllocationStatus.PENDING);
         }
 
@@ -138,7 +144,10 @@ class ApplicationLifecycleIT extends AbstractPostgresIT {
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
             assertThat(body(response).path("status").asText()).isEqualTo("APPROVED");
             assertThat(body(response).path("decidedBy").asText()).isEqualTo(displayNameOf(warden));
-            assertThat(body(response).path("decidedAt").isNull()).isFalse();
+            // Also hasNonNull rather than isNull()-is-false: that form passed whether the
+            // timestamp was there or the field was missing altogether, so it could not
+            // have caught a decision that failed to stamp one.
+            assertThat(body(response).hasNonNull("decidedAt")).isTrue();
             assertThat(body(response).path("note").asText()).isEqualTo("Bed confirmed");
 
             // The two facts that must be true together. Either one alone is a bug: a

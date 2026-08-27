@@ -222,13 +222,15 @@ pinned by `anUnmarkedWorkingDayIsNeitherAnAbsenceNorAReturn`.
 
 ---
 
-## 6. What the first integration run found
+## 6. What the integration runs found
 
 The suite's first real execution (CI run #3, 2026-08-26) put 126 executions through a real
 PostgreSQL. Forty-five failed. They reduced to four root causes — three production defects
 and one set of test-side mistakes — and the three defects are the argument for this suite
 existing, because **every one of them lives in behaviour a mock cannot have**: a DDL type,
-and two transaction rollback semantics. All 231 unit tests were green throughout.
+and two transaction rollback semantics. The unit suite was green throughout — 229 tests at
+that commit, 231 once these fixes brought their own tests with them. §6.5 is the one thing
+the second run added.
 
 **6.1 Enum columns: `CHAR(1)` where the schema says `VARCHAR(1)`.** Hibernate 6 maps
 `@Enumerated(STRING)` plus `@Column(length = 1)` to `CHAR(1)`; `V1__init.sql` declares
@@ -269,30 +271,51 @@ right: the call *was* made. Whether it survived is not a question a mock can be 
 an enum constant, queried a `decided_by_id` column that does not exist (it is `decided_by`),
 and expected a username where the response carries a display name.
 
+**6.5 A fourth test-side mistake, found by the second run.** `applyingCreatesAPendingApplication`
+asserted `path("decidedAt").isNull()` on a pending application. The app serialises with
+`default-property-inclusion: non_null`, so an undecided application omits `decidedAt`
+altogether rather than sending it as `null` — `path` returns a `MissingNode`, whose `isNull()`
+is `false`. Its sibling in `approvalAllocates` asserted the same predicate was `isFalse()`
+and so passed for the wrong reason: a missing field would have satisfied it just as well as a
+real timestamp, which is the one thing that assertion existed to rule out. Both now use
+`hasNonNull`, which asks whether there is a decision timestamp rather than what Jackson does
+with absent ones.
+
+**What the second run said.** CI run #4 (2026-08-27) put the same 126 executions through the
+fixed tree and 125 passed. All three production defects are confirmed fixed by a real run,
+not merely by reasoning: `SchemaAgreementIT` 35/35 for §6.1, `FeeReminderIdempotencyIT` 9/9
+for §6.2, and `AuthFlowIT` 22/22 for §6.3 — including the `refreshing` tests that read the
+token rows back after the transaction ended, which is the only way §6.3 was ever visible. The
+lone failure was §6.5, above.
+
 ---
 
 ## What is actually verified
 
 | Claim | Test | Has it run? |
 | --- | --- | --- |
-| Allocation cannot over-fill a room | `AllocationConcurrencyIT` (7 tests) | **Yes — 7/7, CI run #3** |
-| Initiation cannot double-charge | `PaymentCallbackIT` (14 tests) | **Yes — 14/14, CI run #3** |
+| Allocation cannot over-fill a room | `AllocationConcurrencyIT` (7 tests) | **Yes — 7/7, CI run #4** |
+| Initiation cannot double-charge | `PaymentCallbackIT` (14 tests) | **Yes — 14/14, CI run #4** |
 | Full-amount settlement is race-safe | `PaymentCallbackIT` | **Yes — same run** |
 | Partial settlement is race-safe | *not asserted — see §3* | — |
-| Reminders are once per invoice per day | `FeeReminderIdempotencyIT` (9 tests) | Ran; failed on §6.2, fixed, re-run pending |
-| The absence scan converges | `AbsenceScanIdempotencyIT` (8 tests) | **Yes — 8/8, CI run #3** |
+| Reminders are once per invoice per day | `FeeReminderIdempotencyIT` (9 tests) | **Yes — 9/9, CI run #4** |
+| The absence scan converges | `AbsenceScanIdempotencyIT` (8 tests) | **Yes — 8/8, CI run #4** |
 
-**The integration suite has now executed — once, in CI, and it did not pass.** It needs
-Docker for Testcontainers and the machine this was built on has none, so
-`.github/workflows/ci.yml` is where these six claims get their first and so far only real
-run. That run put 126 executions through a real PostgreSQL and 45 of them failed, reducing
-to four root causes: three production defects and one set of test-side mistakes, all set out
-in §6. All four are fixed, and the 231 unit tests still pass (`mvnw test`, 0 failures,
-0 errors, verified 2026-08-27).
+Run #4 rather than run #3 for all of them: run #3 executed against a tree carrying the three
+defects in §6, so run #4 is the first result that describes the code as it now stands.
 
-Three of the six claims above are now carrying a real result and say so. The fee-reminder
-row does not: it failed on the defect in §6.2, and it flips only when a CI run goes green on
-the fixed tree — not when the fix is written. That run has not happened yet.
+**The integration suite has now executed twice, both times in CI.** It needs Docker for
+Testcontainers and the machine this was built on has none, so
+`.github/workflows/ci.yml` is where these six claims get their only real run. Run #3 put 126
+executions through a real PostgreSQL and 45 failed, reducing to four root causes: three
+production defects and a set of test-side mistakes, all set out in §6. Run #4 re-ran the same
+126 against the fixed tree and 125 passed, the one failure being a fourth test-side mistake
+(§6.5). The 231 unit tests pass alongside them (`mvnw test`, 0 failures, 0 errors, verified
+2026-08-27).
+
+Every claim above that is asserted at all now carries a real result. The one dash is §3's
+concurrent partial settlement, which is unasserted on purpose and stays that way until the
+defect itself is fixed.
 
 ---
 

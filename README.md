@@ -103,10 +103,11 @@ was written on does not have one, so they have still never run locally. They com
 (`./mvnw test-compile`), and `.github/workflows/ci.yml` is where they actually
 execute — which is a large part of why that file exists.
 
-That first real run earned its keep: it found three production defects that 231 green
-unit tests had all missed, because every one of them lives in behaviour a mock cannot
-have — an entity/DDL type mismatch, and two transactions whose rollback semantics were
-wrong. All three are fixed; `docs/concurrency.md` has the detail.
+That first real run earned its keep: it found three production defects that a fully green
+unit suite had all missed — 229 tests at that commit, all passing — because every one of
+them lives in behaviour a mock cannot have: an entity/DDL type mismatch, and two
+transactions whose rollback semantics were wrong. All three are fixed and a second CI run
+confirms it; `docs/concurrency.md` §6 has the detail.
 
 ```bash
 cd backend && ./mvnw verify   # unit (surefire) + integration (failsafe) — needs Docker
@@ -132,8 +133,8 @@ Stated rather than discovered later:
   knowingly-failing test invites the next person to delete it rather than read it.
 - **The integration suite runs only in CI**, never on the machine it was written on.
   Its first run found three production defects — see
-  [`docs/concurrency.md`](docs/concurrency.md) §6 — and one of the six concurrency
-  claims is still waiting on a green run to confirm its fix.
+  [`docs/concurrency.md`](docs/concurrency.md) §6 — all three since confirmed fixed by a
+  second run.
 - **No frontend tests.** The typecheck is strict and `next build` fails on a type
   error, which catches contract drift against `types.ts` and nothing about
   behaviour.

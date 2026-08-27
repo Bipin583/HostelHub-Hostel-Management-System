@@ -6,7 +6,7 @@
 # ubuntu runners have one. This workflow is the only place the concurrency
 # suite -- bed allocation, payment idempotency, reminder and absence-scan
 # idempotence -- actually executes, and its first run found three production
-# defects that 231 green unit tests had not. See docs/concurrency.md section 6.
+# defects that a fully green unit suite had not. See docs/concurrency.md section 6.
 
 name: CI
 
