@@ -13,7 +13,6 @@ import com.hostelops.repository.HostelFeeRepository;
 import java.time.LocalDate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -81,7 +80,14 @@ class FeeReminderDispatch {
      * {@link FeeReminder} argues for. Claiming first means a crash after the flush loses a
      * message; sending first would mean a crash after the send resends it on the retry.
      *
+     * <p>A lost race -- another run claimed this invoice today between the caller's read and
+     * this write -- is deliberately not handled here, even though this is the obvious place
+     * for it. See the note at the insert: it cannot be handled here.
+     *
      * @return what happened, for the counters in {@code FeeReminderRunResponse}
+     * @throws org.springframework.dao.DataIntegrityViolationException when today's reminder
+     *     for this invoice already exists; {@code FeeReminderService.outcomeFor} counts it
+     *     as a skip
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     Outcome sendFor(Long feeId, LocalDate reminderDate) {
@@ -92,17 +98,21 @@ class FeeReminderDispatch {
             return Outcome.SKIPPED;
         }
 
-        try {
-            reminders.saveAndFlush(FeeReminder.forFeeOn(fee, reminderDate, ReminderChannel.EMAIL));
-        } catch (DataIntegrityViolationException e) {
-            // uq_fee_reminders_per_day: somebody already reminded this invoice today. This
-            // is the guarantee working, so it is a skip rather than a failure -- and it is
-            // the branch a second run of the job takes for every invoice, which is what
-            // FeeReminderIdempotencyIT asserts. REQUIRES_NEW is what keeps the poisoned
-            // transaction confined to this one invoice.
-            log.debug("Fee {} was already reminded on {}", feeId, reminderDate);
-            return Outcome.SKIPPED;
-        }
+        // saveAndFlush rather than save, so the INSERT reaches the database here, while there
+        // is still a decision left to make. A deferred flush would not surface the duplicate
+        // until commit -- after notifier.send() below had already gone out, which is the second
+        // email this class exists to prevent.
+        //
+        // The DataIntegrityViolationException from uq_fee_reminders_per_day is not caught here,
+        // and that is not an oversight: catching it does not work. A failed flush has already
+        // marked this transaction rollback-only, so `return Outcome.SKIPPED` would get as far
+        // as the commit on the way out, which then throws UnexpectedRollbackException -- an
+        // exception the caller has no way to tell from a real fault, so the skip would be
+        // counted as a failure and the return value discarded. Letting the violation propagate
+        // instead makes Spring roll this transaction back and rethrow it with no commit
+        // attempted, and FeeReminderService.outcomeFor names it the skip it is. REQUIRES_NEW is
+        // still what confines that rollback to this one invoice.
+        reminders.saveAndFlush(FeeReminder.forFeeOn(fee, reminderDate, ReminderChannel.EMAIL));
 
         Student student = fee.getStudent();
         UserAccount account = student.getUser();

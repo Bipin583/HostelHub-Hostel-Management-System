@@ -222,23 +222,77 @@ pinned by `anUnmarkedWorkingDayIsNeitherAnAbsenceNorAReturn`.
 
 ---
 
+## 6. What the first integration run found
+
+The suite's first real execution (CI run #3, 2026-08-26) put 126 executions through a real
+PostgreSQL. Forty-five failed. They reduced to four root causes — three production defects
+and one set of test-side mistakes — and the three defects are the argument for this suite
+existing, because **every one of them lives in behaviour a mock cannot have**: a DDL type,
+and two transaction rollback semantics. All 231 unit tests were green throughout.
+
+**6.1 Enum columns: `CHAR(1)` where the schema says `VARCHAR(1)`.** Hibernate 6 maps
+`@Enumerated(STRING)` plus `@Column(length = 1)` to `CHAR(1)`; `V1__init.sql` declares
+`VARCHAR(1)`. Only `SchemaAgreementIT` runs with `ddl-auto=validate`, so only it noticed —
+and a `SchemaManagementException` aborts the entire persistence unit, so one mismatched
+column took all 35 of that class's executions down with it. Fixed with
+`@JdbcTypeCode(SqlTypes.VARCHAR)` on `Notice.audienceGender`, `Student.gender` and
+`Room.eligibleGender`. The entity moved, not the migration: the schema is frozen.
+
+**6.2 A lost reminder race counted as a failure.** `FeeReminderDispatch.sendFor` caught
+`DataIntegrityViolationException` and returned `SKIPPED`. That could not work. The failed
+flush had already marked its `REQUIRES_NEW` transaction rollback-only, so the commit on the
+way out threw `UnexpectedRollbackException`, the caller's `catch (RuntimeException)` counted
+it `FAILED`, and the returned `SKIPPED` was discarded. Fixed by letting the violation
+propagate — Spring then rolls back and rethrows with no commit attempted — and classifying
+it in `FeeReminderService.outcomeFor`. The `saveAndFlush` had to stay: a deferred flush
+surfaces the duplicate only at commit, which is after the email has gone out.
+
+**6.3 Refresh-token containment, rolled back by its own refusal.** On reuse detection
+`RefreshTokenService.rotate` revoked the whole token family and then threw `ApiException`.
+Unchecked, so Spring's default rollback rule took the revocation down with the rotation: the
+bulk `UPDATE` reached the database and was undone on the way out. Nothing observable
+disagreed — the 401 still went back, the error code was still right, and the log still
+announced that the family had been cut — so reuse detection was inert in production, and the
+live successor of a stolen chain kept rotating indefinitely. The same bug silently spared a
+deactivated account's tokens. `AuthFlowIT` caught it the only way it can be caught: by
+reading the rows back after the transaction had ended. Fixed by moving the revocation into
+`RefreshTokenRevoker`, a separate bean under `REQUIRES_NEW`, so containment commits *before*
+the refusal that follows it. Separate bean because Spring's advice is on a proxy — a
+`REQUIRES_NEW` method called on `this` would rejoin the doomed transaction and restore the
+bug with the annotation still sitting there.
+
+That last one is the sharpest illustration of the rule this document opens with. A mock
+verifying `revokeAllForUser` was called passed for as long as the defect existed, and was
+right: the call *was* made. Whether it survived is not a question a mock can be asked.
+
+**6.4 Test-side, for completeness.** `ApplicationLifecycleIT` compared a `String` return to
+an enum constant, queried a `decided_by_id` column that does not exist (it is `decided_by`),
+and expected a username where the response carries a display name.
+
+---
+
 ## What is actually verified
 
 | Claim | Test | Has it run? |
 | --- | --- | --- |
-| Allocation cannot over-fill a room | `AllocationConcurrencyIT` (7 tests) | **No** |
-| Initiation cannot double-charge | `PaymentCallbackIT` (14 tests) | **No** |
-| Full-amount settlement is race-safe | `PaymentCallbackIT` | **No** |
+| Allocation cannot over-fill a room | `AllocationConcurrencyIT` (7 tests) | **Yes — 7/7, CI run #3** |
+| Initiation cannot double-charge | `PaymentCallbackIT` (14 tests) | **Yes — 14/14, CI run #3** |
+| Full-amount settlement is race-safe | `PaymentCallbackIT` | **Yes — same run** |
 | Partial settlement is race-safe | *not asserted — see §3* | — |
-| Reminders are once per invoice per day | `FeeReminderIdempotencyIT` (9 tests) | **No** |
-| The absence scan converges | `AbsenceScanIdempotencyIT` (8 tests) | **No** |
+| Reminders are once per invoice per day | `FeeReminderIdempotencyIT` (9 tests) | Ran; failed on §6.2, fixed, re-run pending |
+| The absence scan converges | `AbsenceScanIdempotencyIT` (8 tests) | **Yes — 8/8, CI run #3** |
 
-**The integration suite has never executed.** It needs Docker for Testcontainers, and the
-machine this was built on does not have it. The tests are written and they compile
-(`mvnw test-compile` → BUILD SUCCESS), and the 228 unit tests pass (`mvnw test`, 0 failures,
-0 errors, verified 2026-08-26). Neither of those is the same thing as a green concurrency
-suite, and this document does not claim otherwise. The CI workflow in
-`.github/workflows/ci.yml` is where these six claims get their first real run.
+**The integration suite has now executed — once, in CI, and it did not pass.** It needs
+Docker for Testcontainers and the machine this was built on has none, so
+`.github/workflows/ci.yml` is where these six claims get their first and so far only real
+run. That run put 126 executions through a real PostgreSQL and 45 of them failed, reducing
+to four root causes: three production defects and one set of test-side mistakes, all set out
+in §6. All four are fixed, and the 231 unit tests still pass (`mvnw test`, 0 failures,
+0 errors, verified 2026-08-27).
+
+Three of the six claims above are now carrying a real result and say so. The fee-reminder
+row does not: it failed on the defect in §6.2, and it flips only when a CI run goes green on
+the fixed tree — not when the fix is written. That run has not happened yet.
 
 ---
 

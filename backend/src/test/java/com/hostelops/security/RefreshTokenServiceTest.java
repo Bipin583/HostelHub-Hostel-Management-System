@@ -18,6 +18,7 @@ import com.hostelops.domain.UserAccount;
 import com.hostelops.exception.ApiException;
 import com.hostelops.exception.ErrorCode;
 import com.hostelops.repository.RefreshTokenRepository;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -34,6 +35,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Refresh token issuance, rotation and revocation.
@@ -52,6 +55,9 @@ class RefreshTokenServiceTest {
     @Mock
     private RefreshTokenRepository tokens;
 
+    @Mock
+    private RefreshTokenRevoker revoker;
+
     private RefreshTokenService service;
     private UserAccount user;
 
@@ -63,7 +69,7 @@ class RefreshTokenServiceTest {
                 Duration.ofMinutes(15),
                 REFRESH_TTL,
                 new JwtProperties.RefreshCookie("hostelops_refresh", "/api/v1/auth", true, "Strict"));
-        service = new RefreshTokenService(tokens, properties);
+        service = new RefreshTokenService(tokens, revoker, properties);
 
         user = new UserAccount();
         user.setId(USER_ID);
@@ -207,7 +213,13 @@ class RefreshTokenServiceTest {
             // A spent token in circulation means either a stolen copy or a client that
             // lost a rotation race. One of those is an attack and neither is
             // recoverable, so the chain is cut rather than left partly live.
-            verify(tokens).revokeAllForUser(eq(USER_ID), any(Instant.class));
+            //
+            // Verified on the revoker, not the repository. rotate() throws immediately
+            // after this call, so the revocation only counts if it commits outside the
+            // rotation transaction -- an inline tokens.revokeAllForUser would satisfy a
+            // repository-level verify and still be rolled back. AuthFlowIT is what proves
+            // the rows actually change; this pins which collaborator is asked.
+            verify(revoker).revokeAllForUser(eq(USER_ID), any(Instant.class));
             verify(tokens, never()).saveAndFlush(any());
         }
 
@@ -225,7 +237,7 @@ class RefreshTokenServiceTest {
 
             // Ordinary expiry carries no evidence of compromise. Revoking everything
             // here would log a user out of their phone because their laptop went stale.
-            verify(tokens, never()).revokeAllForUser(anyLong(), any());
+            verify(revoker, never()).revokeAllForUser(anyLong(), any());
             verify(tokens, never()).saveAndFlush(any());
         }
 
@@ -243,7 +255,7 @@ class RefreshTokenServiceTest {
             // The stateless access token runs out its 15 minutes regardless; this is
             // the checkpoint that consults the database, so it is where a disabled
             // account is actually stopped.
-            verify(tokens).revokeAllForUser(eq(USER_ID), any(Instant.class));
+            verify(revoker).revokeAllForUser(eq(USER_ID), any(Instant.class));
             verify(tokens, never()).saveAndFlush(any());
         }
 
@@ -257,7 +269,7 @@ class RefreshTokenServiceTest {
                     .extracting(ex -> ((ApiException) ex).getCode())
                     .isEqualTo(ErrorCode.REFRESH_TOKEN_INVALID);
 
-            verify(tokens, never()).revokeAllForUser(anyLong(), any());
+            verify(revoker, never()).revokeAllForUser(anyLong(), any());
         }
 
         @Test
@@ -289,6 +301,7 @@ class RefreshTokenServiceTest {
                     .isInstanceOf(ApiException.class);
 
             verifyNoInteractions(tokens);
+            verifyNoInteractions(revoker);
         }
     }
 
@@ -352,6 +365,31 @@ class RefreshTokenServiceTest {
             when(tokens.revokeAllForUser(eq(USER_ID), any(Instant.class))).thenReturn(3);
 
             assertThat(service.revokeAllForUser(USER_ID)).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("containment commits in its own transaction, in a separate bean so the proxy is crossed")
+        void containmentEscapesTheRotationTransaction() throws Exception {
+            Method revokeAll = RefreshTokenRevoker.class
+                    .getDeclaredMethod("revokeAllForUser", Long.class, Instant.class);
+            Transactional annotation = revokeAll.getAnnotation(Transactional.class);
+
+            assertThat(annotation).isNotNull();
+            assertThat(annotation.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
+
+            // Neither half of this is stylistic, and both were once wrong.
+            //
+            // Propagation: rotate() revokes the family and then throws an unchecked
+            // exception. Under REQUIRED the revocation shares that transaction and is
+            // rolled back with it, so reuse detection reduces to a log line with no
+            // durable effect -- a 401 goes back, the error code is right, and the stolen
+            // chain stays live. AuthFlowIT caught exactly that.
+            //
+            // Separate bean: Spring's transaction advice lives on a proxy, so a
+            // REQUIRES_NEW method declared on RefreshTokenService would be invoked on
+            // `this`, never cross the proxy, and rejoin the very transaction it exists to
+            // escape -- with the annotation still there suggesting otherwise.
+            assertThat(revokeAll.getDeclaringClass()).isNotEqualTo(RefreshTokenService.class);
         }
     }
 

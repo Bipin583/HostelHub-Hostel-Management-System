@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -207,6 +208,29 @@ class FeeReminderServiceTest {
             assertThat(response.failed()).isEqualTo(1);
             assertThat(response.skipped()).isZero();
             verify(dispatch).sendFor(3L, RUN_DATE);
+        }
+
+        @Test
+        @DisplayName("losing the race at the constraint is counted as skipped, never as failed")
+        void aLostRaceIsCountedAsSkipped() {
+            when(fees.findDueForReminder(any())).thenReturn(List.of(fee(1L), fee(2L)));
+            when(reminders.findFeeIdsRemindedOn(eq(RUN_DATE), any())).thenReturn(List.of());
+            when(dispatch.sendFor(1L, RUN_DATE)).thenReturn(FeeReminderDispatch.Outcome.SENT);
+            when(dispatch.sendFor(2L, RUN_DATE))
+                    .thenThrow(new DataIntegrityViolationException("uq_fee_reminders_per_day"));
+
+            FeeReminderRunResponse response = service.run(RUN_DATE);
+
+            // This catch is load-bearing rather than defensive, and the reason it is out here
+            // instead of inside sendFor is the whole point: the flush that raises the violation
+            // has already marked that transaction rollback-only, so a SKIPPED returned from
+            // inside it never survives its own commit. Handle it there and every invoice
+            // another instance reached first is reported as a failure -- `failed`, the one
+            // number an operator is supposed to act on, reading as a fault at exactly the
+            // moment the guarantee was working as designed.
+            assertThat(response.sent()).isEqualTo(1);
+            assertThat(response.skipped()).isEqualTo(1);
+            assertThat(response.failed()).isZero();
         }
 
         @Test

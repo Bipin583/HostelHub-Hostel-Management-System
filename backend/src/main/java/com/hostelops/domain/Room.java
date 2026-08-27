@@ -14,6 +14,8 @@ import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * A room, with a bed {@link #capacity} but no occupancy counter.
@@ -58,7 +60,9 @@ public class Room {
     @Column(name = "eligible_year", nullable = false)
     private Integer eligibleYear;
 
+    /** {@code VARCHAR(1)} in the schema; see the note on {@code Notice.audienceGender}. */
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "eligible_gender", nullable = false, length = 1)
     private Gender eligibleGender;
 

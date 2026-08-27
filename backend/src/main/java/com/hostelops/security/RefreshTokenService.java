@@ -32,7 +32,9 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li><b>Reuse detection.</b> Presenting an already-revoked token means either a
  *       stolen copy or a client that lost the race after a rotation. Neither is
  *       recoverable from, and one of them is an attack, so every live token for
- *       that user is revoked and the whole family is invalidated.
+ *       that user is revoked and the whole family is invalidated. That revocation
+ *       is committed through {@link RefreshTokenRevoker}, in a transaction separate
+ *       from this one, because the method performing it goes on to fail.
  * </ul>
  */
 @Service
@@ -44,11 +46,14 @@ public class RefreshTokenService {
     private static final int TOKEN_BYTES = 32;
 
     private final RefreshTokenRepository tokens;
+    private final RefreshTokenRevoker revoker;
     private final JwtProperties properties;
     private final SecureRandom random = new SecureRandom();
 
-    public RefreshTokenService(RefreshTokenRepository tokens, JwtProperties properties) {
+    public RefreshTokenService(
+            RefreshTokenRepository tokens, RefreshTokenRevoker revoker, JwtProperties properties) {
         this.tokens = tokens;
+        this.revoker = revoker;
         this.properties = properties;
     }
 
@@ -91,9 +96,13 @@ public class RefreshTokenService {
             if (existing.getRevokedAt() != null) {
                 // Someone is replaying a spent token. Assume the worst and cut the
                 // whole family loose rather than leaving a possibly-stolen chain live.
-                log.warn("Refresh token reuse detected for user {}; revoking all sessions",
-                        existing.getUser().getId());
-                tokens.revokeAllForUser(existing.getUser().getId(), now);
+                //
+                // Through the revoker rather than this transaction: the throw below is
+                // unchecked, so a revocation written here would be rolled back on the way
+                // out and the family would stay live behind a log line saying it was cut.
+                int revoked = revoker.revokeAllForUser(existing.getUser().getId(), now);
+                log.warn("Refresh token reuse detected for user {}; revoked {} live session(s)",
+                        existing.getUser().getId(), revoked);
             }
             throw new ApiException(
                     ErrorCode.REFRESH_TOKEN_INVALID, "This session is no longer valid. Please sign in again.");
@@ -103,7 +112,9 @@ public class RefreshTokenService {
         if (!user.isEnabled()) {
             // The one place a deactivated account is caught promptly: the access
             // token's 15 minutes may still be running, but it cannot be renewed.
-            tokens.revokeAllForUser(user.getId(), now);
+            // Separate transaction for the same reason as above -- the throw would
+            // otherwise undo the revocation and leave the rows live.
+            revoker.revokeAllForUser(user.getId(), now);
             throw new ApiException(ErrorCode.REFRESH_TOKEN_INVALID, "This account is no longer active");
         }
 
@@ -139,6 +150,14 @@ public class RefreshTokenService {
                 });
     }
 
+    /**
+     * Logout-everywhere, as an ordinary participating transaction.
+     *
+     * <p>Deliberately not routed through {@link RefreshTokenRevoker}: this returns normally,
+     * so it has no rollback to escape, and it should share the fate of whatever administrative
+     * action asked for it. A deactivation that fails halfway should not leave the sessions
+     * killed.
+     */
     @Transactional
     public int revokeAllForUser(Long userId) {
         return tokens.revokeAllForUser(userId, Instant.now());

@@ -95,15 +95,18 @@ with consequences — argued in `frontend/src/lib/session.ts`.
 
 | | |
 | --- | --- |
-| Unit | **228**, passing (`cd backend && ./mvnw test`) |
-| Integration | **98** across 8 classes — **have never been run locally** |
+| Unit | **231**, passing (`cd backend && ./mvnw test`) |
+| Integration | **126** executions across 8 classes — run in CI, never on this machine |
 
 The integration tests need a Docker daemon for Testcontainers, and the machine this
-was written on does not have one. They compile (`./mvnw test-compile`) and that is
-all anyone can honestly say about them from here. `.github/workflows/ci.yml` is the
-first place they actually execute, which is a large part of why that file exists.
+was written on does not have one, so they have still never run locally. They compile
+(`./mvnw test-compile`), and `.github/workflows/ci.yml` is where they actually
+execute — which is a large part of why that file exists.
 
-Nothing in this repository reports them as passing.
+That first real run earned its keep: it found three production defects that 231 green
+unit tests had all missed, because every one of them lives in behaviour a mock cannot
+have — an entity/DDL type mismatch, and two transactions whose rollback semantics were
+wrong. All three are fixed; `docs/concurrency.md` has the detail.
 
 ```bash
 cd backend && ./mvnw verify   # unit (surefire) + integration (failsafe) — needs Docker
@@ -127,7 +130,10 @@ Stated rather than discovered later:
   fixes written out in [`docs/concurrency.md`](docs/concurrency.md#the-open-defect).
   The concurrent partial case is **not** asserted by a test, because committing a
   knowingly-failing test invites the next person to delete it rather than read it.
-- **The integration suite has never executed.** See above.
+- **The integration suite runs only in CI**, never on the machine it was written on.
+  Its first run found three production defects — see
+  [`docs/concurrency.md`](docs/concurrency.md) §6 — and one of the six concurrency
+  claims is still waiting on a green run to confirm its fix.
 - **No frontend tests.** The typecheck is strict and `next build` fails on a type
   error, which catches contract drift against `types.ts` and nothing about
   behaviour.

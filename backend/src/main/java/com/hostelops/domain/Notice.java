@@ -16,6 +16,8 @@ import java.time.Instant;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * A notice board post.
@@ -63,8 +65,25 @@ public class Notice {
     @Column(name = "audience_hostel_type", length = 2)
     private HostelType audienceHostelType;
 
-    /** NULL = both genders. */
+    /**
+     * NULL = both genders.
+     *
+     * <p>The {@code @JdbcTypeCode} is load-bearing. Hibernate 6 maps an
+     * {@code @Enumerated(STRING)} attribute declared {@code length = 1} to
+     * {@code CHAR(1)}, but every single-character enum column in {@code V1__init.sql}
+     * is {@code VARCHAR(1)}. Under {@code ddl-auto=none} nothing notices; under the
+     * {@code validate} that {@code SchemaAgreementIT} turns on, Hibernate refuses to
+     * build the persistence unit at all, and the first mismatch it happens to reach
+     * takes down every test in that class.
+     *
+     * <p>The entity moves rather than the schema because the schema is frozen and
+     * already consistent -- three annotations against an {@code ALTER TABLE} on three
+     * live columns is the smaller and more reversible change. See also
+     * {@code Student.gender} and {@code Room.eligibleGender}, which need the same
+     * thing for the same reason.
+     */
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "audience_gender", length = 1)
     private Gender audienceGender;
 

@@ -66,7 +66,7 @@ class ApplicationLifecycleIT extends AbstractPostgresIT {
         @DisplayName("a student moves from NOT_APPLIED to PENDING")
         void applyingCreatesAPendingApplication() {
             SeededStudent student = seedStudent(Gender.F, 2);
-            assertThat(allocationStatusOf(student.studentId())).isEqualTo(AllocationStatus.NOT_APPLIED);
+            assertThat(allocationStateOf(student.studentId())).isEqualTo(AllocationStatus.NOT_APPLIED);
 
             ResponseEntity<String> response = apply(student);
 
@@ -74,7 +74,7 @@ class ApplicationLifecycleIT extends AbstractPostgresIT {
             assertThat(body(response).path("status").asText()).isEqualTo("PENDING");
             assertThat(body(response).path("rollNumber").asText()).isEqualTo(student.rollNumber());
             assertThat(body(response).path("decidedAt").isNull()).isTrue();
-            assertThat(allocationStatusOf(student.studentId())).isEqualTo(AllocationStatus.PENDING);
+            assertThat(allocationStateOf(student.studentId())).isEqualTo(AllocationStatus.PENDING);
         }
 
         @Test
@@ -137,14 +137,14 @@ class ApplicationLifecycleIT extends AbstractPostgresIT {
 
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
             assertThat(body(response).path("status").asText()).isEqualTo("APPROVED");
-            assertThat(body(response).path("decidedBy").asText()).isEqualTo(warden.username());
+            assertThat(body(response).path("decidedBy").asText()).isEqualTo(displayNameOf(warden));
             assertThat(body(response).path("decidedAt").isNull()).isFalse();
             assertThat(body(response).path("note").asText()).isEqualTo("Bed confirmed");
 
             // The two facts that must be true together. Either one alone is a bug: a
             // status with no row is a promise with no bed, a row with no status is a
             // student who cannot see the room they were given.
-            assertThat(allocationStatusOf(student.studentId())).isEqualTo(AllocationStatus.ALLOCATED);
+            assertThat(allocationStateOf(student.studentId())).isEqualTo(AllocationStatus.ALLOCATED);
             assertThat(activeAllocationCountForStudent(student.studentId())).isEqualTo(1);
         }
 
@@ -191,7 +191,7 @@ class ApplicationLifecycleIT extends AbstractPostgresIT {
             // transaction discarded the decision. A version that caught the exception to
             // "at least record the approval" would leave APPROVED here, with no bed.
             assertThat(applicationStatusOf(applicationId)).isEqualTo("PENDING");
-            assertThat(allocationStatusOf(finalYear.studentId())).isEqualTo(AllocationStatus.PENDING);
+            assertThat(allocationStateOf(finalYear.studentId())).isEqualTo(AllocationStatus.PENDING);
             assertThat(activeAllocationCountForStudent(finalYear.studentId())).isZero();
             assertThat(decidedAtIsNull(applicationId))
                     .as("a rolled-back decision leaves no decision timestamp behind")
@@ -215,7 +215,7 @@ class ApplicationLifecycleIT extends AbstractPostgresIT {
             // it been recorded as decided, the retry would be an ILLEGAL_STATE_TRANSITION
             // and the student would need an administrator to unpick the row by hand.
             assertThat(retry.getStatusCode()).isEqualTo(HttpStatus.OK);
-            assertThat(allocationStatusOf(finalYear.studentId())).isEqualTo(AllocationStatus.ALLOCATED);
+            assertThat(allocationStateOf(finalYear.studentId())).isEqualTo(AllocationStatus.ALLOCATED);
         }
 
         @Test
@@ -293,7 +293,7 @@ class ApplicationLifecycleIT extends AbstractPostgresIT {
                     String.class);
 
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-            assertThat(allocationStatusOf(student.studentId())).isEqualTo(AllocationStatus.ALLOCATED);
+            assertThat(allocationStateOf(student.studentId())).isEqualTo(AllocationStatus.ALLOCATED);
         }
     }
 
@@ -316,7 +316,7 @@ class ApplicationLifecycleIT extends AbstractPostgresIT {
             // The rejection belongs to the application, not to the student: there is no
             // REJECTED student status, because a student rejected once must still be
             // housable next term.
-            assertThat(allocationStatusOf(student.studentId())).isEqualTo(AllocationStatus.NOT_APPLIED);
+            assertThat(allocationStateOf(student.studentId())).isEqualTo(AllocationStatus.NOT_APPLIED);
             assertThat(activeAllocationCountForStudent(student.studentId())).isZero();
         }
 
@@ -426,14 +426,43 @@ class ApplicationLifecycleIT extends AbstractPostgresIT {
     private boolean decidedAtIsNull(long applicationId) {
         Integer nulls = jdbc.queryForObject(
                 "SELECT count(*) FROM applications WHERE id = ? AND decided_at IS NULL "
-                        + "AND decided_by_id IS NULL",
+                        + "AND decided_by IS NULL",
                 Integer.class, applicationId);
         return nulls != null && nulls == 1;
     }
 
     private Long decidedByOf(long applicationId) {
         return jdbc.queryForObject(
-                "SELECT decided_by_id FROM applications WHERE id = ?", Long.class, applicationId);
+                "SELECT decided_by FROM applications WHERE id = ?", Long.class, applicationId);
+    }
+
+    /**
+     * The student's allocation status as the enum, not the string the fixture hands back.
+     *
+     * <p>{@link #allocationStatusOf} returns the raw column, which is right for a base helper
+     * that cannot know what each test wants to compare it to. Comparing that string to an
+     * {@link AllocationStatus} can never pass, and the failure reads as a data problem rather
+     * than the type error it is -- AssertJ prints {@code expected: PENDING but was: "PENDING"},
+     * two values that differ only in quoting. Parsing here keeps every assertion above stated
+     * in terms of the domain state it is actually about, and a status this application never
+     * writes fails loudly at the {@code valueOf} instead of silently comparing unequal.
+     */
+    private AllocationStatus allocationStateOf(long studentId) {
+        return AllocationStatus.valueOf(allocationStatusOf(studentId));
+    }
+
+    /**
+     * A user's display name, read back off the row.
+     *
+     * <p>{@code ApplicationResponse.decidedBy} carries the deciding warden's display name
+     * rather than their username or id, so a student reading a decision sees a person. Read
+     * from the database rather than rebuilt as {@code "IT Warden " + username}, for the same
+     * reason {@link #wardenToken} reads the scope back: a test that restates what the fixture
+     * constructs stops testing the response the day the fixture changes shape.
+     */
+    private String displayNameOf(SeededUser user) {
+        return jdbc.queryForObject(
+                "SELECT full_name FROM users WHERE id = ?", String.class, user.userId());
     }
 
     private int pendingApplicationCount(long studentId) {

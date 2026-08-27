@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -140,6 +141,14 @@ public class FeeReminderService {
      * already rolled back by the time this catches anything, so there is no half-written row
      * to clean up here.
      *
+     * <p>The duplicate is classified here rather than inside the transactional method that
+     * provokes it, which reads backwards until you try it the other way round. A constraint
+     * violation is detected by a flush, and a failed flush marks the transaction rollback-only;
+     * a {@code catch} inside {@link FeeReminderDispatch#sendFor} therefore returns a value that
+     * never survives its own commit -- Spring throws {@code UnexpectedRollbackException} on the
+     * way out and the return is discarded. The classification has to happen outside the
+     * transaction boundary because that is the first place the outcome can be observed at all.
+     *
      * <p>{@link RuntimeException} rather than a list of the ones expected, because the point
      * is the unanticipated ones -- and it is logged with the invoice id, which is what turns
      * a {@code failed} count into something somebody can act on. {@link Error} is not caught:
@@ -149,6 +158,15 @@ public class FeeReminderService {
     private FeeReminderDispatch.Outcome outcomeFor(Long feeId, LocalDate runDate) {
         try {
             return dispatch.sendFor(feeId, runDate);
+        } catch (DataIntegrityViolationException e) {
+            // uq_fee_reminders_per_day: another run claimed this invoice for today between the
+            // findFeeIdsRemindedOn read above and the insert. The invoice is reminded exactly
+            // once and this run simply lost the race, so it is the guarantee holding rather
+            // than a fault -- counted with the cheap skips, because from the outside the two
+            // are the same event. This is the branch a second run of the job takes for every
+            // invoice, which is what FeeReminderIdempotencyIT asserts.
+            log.debug("Fee {} was already reminded on {}", feeId, runDate);
+            return FeeReminderDispatch.Outcome.SKIPPED;
         } catch (RuntimeException e) {
             log.error("Fee reminder for invoice {} failed on {}", feeId, runDate, e);
             return FeeReminderDispatch.Outcome.FAILED;
