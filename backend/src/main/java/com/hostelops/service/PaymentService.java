@@ -16,6 +16,7 @@ import com.hostelops.payment.PaymentGateway;
 import com.hostelops.payment.PaymentGatewayException;
 import com.hostelops.payment.PaymentGatewayRegistry;
 import com.hostelops.payment.PaymentOrderRequest;
+import com.hostelops.repository.FeePaymentAttemptRef;
 import com.hostelops.repository.FeePaymentRepository;
 import com.hostelops.repository.HostelFeeRepository;
 import com.hostelops.security.CurrentUserProvider;
@@ -48,12 +49,23 @@ import org.springframework.transaction.annotation.Transactional;
  * rests on.
  *
  * <p><b>Two payments must not erase each other.</b> That is {@link #settle}, and the
- * mechanism is the row lock from {@code HostelFeeRepository.findByIdForUpdate}. Crediting is
- * read-modify-write on {@code amount_paid_paise}: under READ COMMITTED two callbacks landing
- * together both read the old balance and the second write loses the first, so a student who
- * pays twice has one payment vanish from the invoice while its {@code fee_payments} row
- * still says {@code SUCCEEDED}. It is the double-booking race from the allocation code in
- * a different table, and it takes the same fix.
+ * mechanism is two row locks: {@code FeePaymentRepository.findByIdForUpdate} on the attempt
+ * and {@code HostelFeeRepository.findByIdForUpdate} on the invoice, in that order. Crediting
+ * is read-modify-write on {@code amount_paid_paise}: under READ COMMITTED two callbacks
+ * landing together both read the old balance and the second write loses the first, so a
+ * student who pays twice has one payment vanish from the invoice while its
+ * {@code fee_payments} row still says {@code SUCCEEDED}. It is the double-booking race from
+ * the allocation code in a different table, and it takes the same fix.
+ *
+ * <p>The invoice lock alone is not that fix, which is the subtle half. It serialises the two
+ * callbacks but does not stop either proceeding, and a <em>part</em> payment leaves the
+ * invoice with room to absorb a second credit -- so the second transaction credits again and
+ * re-settles the same attempt row on top of the first. Locking the attempt is what makes the
+ * status guard true at the moment it is read. {@code docs/concurrency.md} §3 has the trace.
+ *
+ * <p>Both locks in one transaction means an ordering, and it is attempt-then-invoice
+ * everywhere. Nothing else in the codebase takes both, so there is no cycle to deadlock on;
+ * a future caller that needs them must take them in this order.
  *
  * <h2>Why a gateway failure rolls the attempt back</h2>
  *
@@ -178,25 +190,33 @@ public class PaymentService {
     /**
      * Settles a payment from a verified provider callback.
      *
-     * <p>The order of the four steps is the security argument, and each one is load-bearing.
+     * <p>The order of the five steps is the security argument, and each one is load-bearing.
      *
-     * <p>First the row is found, which is what says who the provider is. Verification uses
-     * the adapter named on that row rather than the configured one, so the caller cannot
+     * <p>First the attempt is resolved, which is what says who the provider is. Verification
+     * uses the adapter named on that row rather than the configured one, so the caller cannot
      * choose which secret their signature is checked against -- a callback that named its
-     * own provider would let anyone pick the gateway whose secret they happen to know.
+     * own provider would let anyone pick the gateway whose secret they happen to know. Only
+     * the id and the provider name are read, as scalars: the entity must not enter the
+     * session before the lock, for the reason the third step gives.
      *
      * <p>Second the signature is checked, before anything about the payment's state is
      * revealed or acted on. An unauthentic caller therefore cannot tell a settled payment
-     * from an unsettled one.
+     * from an unsettled one, and cannot cause a row lock to be taken at all.
      *
-     * <p>Third the {@code PENDING} check. Gateways redeliver callbacks -- all of them do --
-     * and re-settling would credit the invoice a second time for one payment. A 409 rather
-     * than a silent success because the duplicate is worth surfacing, and
-     * {@code PAYMENT_ALREADY_SETTLED} says exactly which case it is.
+     * <p>Third the attempt row is locked, and this is its first and only read. Gateways
+     * redeliver callbacks -- all of them do -- and re-settling would credit the invoice a
+     * second time for one payment. The status guard that stops that is only as good as the
+     * read behind it, so the read has to be the one holding the lock: an unlocked read
+     * followed by a lock would leave the guard looking at a copy taken before the winning
+     * transaction committed, because Hibernate keeps the instance already in the session and
+     * throws away what the {@code FOR UPDATE} returned. A 409 rather than a silent success
+     * because the duplicate is worth surfacing, and {@code PAYMENT_ALREADY_SETTLED} says
+     * exactly which case it is.
      *
-     * <p>Fourth the invoice is locked and credited. The lock is taken here and not earlier so
-     * it is held for the shortest possible span, and it covers the only read-modify-write in
-     * the method.
+     * <p>Fourth the invoice is locked, and fifth it is credited. Two locks in one
+     * transaction, always attempt before invoice -- see the class Javadoc. They are taken
+     * here rather than earlier so they are held for the shortest possible span, and between
+     * them they cover the only read-modify-write in the method.
      *
      * <p>Deliberately three parameters rather than the bound request record: the aspect that
      * writes the audit trail redacts by parameter name, and a signature reaching
@@ -209,28 +229,36 @@ public class PaymentService {
     @Audited(entity = AuditEntity.PAYMENT, action = AuditAction.UPDATE)
     @Transactional
     public FeePaymentResponse settle(String providerOrderId, String providerPaymentId, String signature) {
-        FeePayment payment = requireOneAttemptFor(providerOrderId);
+        FeePaymentAttemptRef attempt = requireOneAttemptFor(providerOrderId);
 
         PaymentGateway gateway;
         try {
-            gateway = gateways.forProvider(payment.getProvider());
+            gateway = gateways.forProvider(attempt.provider());
         } catch (PaymentGatewayException e) {
             // The adapter that opened this order is no longer deployed. Not the caller's
             // fault and not retryable by them, so it is reported as a gateway problem.
             log.error("Payment {} was taken through provider '{}', for which no adapter is registered",
-                    payment.getId(), payment.getProvider(), e);
+                    attempt.id(), attempt.provider(), e);
             throw new ApiException(ErrorCode.PAYMENT_GATEWAY_ERROR,
                     "This payment cannot be verified at the moment.",
-                    Map.of("provider", payment.getProvider()), e);
+                    Map.of("provider", attempt.provider()), e);
         }
 
         if (!gateway.verify(providerOrderId, providerPaymentId, signature)) {
             log.warn("Rejected a {} callback for payment {}: signature did not verify",
-                    payment.getProvider(), payment.getId());
+                    attempt.provider(), attempt.id());
             throw new ApiException(ErrorCode.PAYMENT_VERIFICATION_FAILED,
                     "This payment confirmation could not be verified",
                     Map.of("providerOrderId", providerOrderId));
         }
+
+        // The attempt's first read, and it carries the lock. A concurrent redelivery blocks
+        // here and then sees the winner's committed SUCCEEDED, which is the whole point --
+        // reading the row unlocked above and locking it here would serialise the two
+        // transactions and still leave this one holding a stale PENDING.
+        FeePayment payment = payments.findByIdForUpdate(attempt.id())
+                .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL,
+                        "Payment " + attempt.id() + " has gone"));
 
         if (payment.getStatus().isSettled()) {
             throw new ApiException(ErrorCode.PAYMENT_ALREADY_SETTLED,
@@ -300,20 +328,24 @@ public class PaymentService {
     }
 
     /**
-     * The single attempt a callback refers to.
+     * The single attempt a callback refers to, as scalars.
      *
      * <p>The lookup is by order reference alone, on purpose -- see {@link #settle}. The
      * repository returns a list because {@code provider_order_id} carries no unique
      * constraint, so the "exactly one" this method needs has to be checked rather than
      * assumed.
      *
+     * <p>It returns a projection rather than the entity so that {@link #settle} can pick the
+     * adapter and verify the signature without putting the row in the persistence context.
+     * The entity is then loaded once, under the lock. See {@link FeePaymentAttemptRef}.
+     *
      * <p>Two rows is not a caller error and there is no correct guess available: the
      * signature authenticates one {@code (order, payment)} pair, and crediting the wrong
      * invoice with it would move real money to the wrong student. So it is a 500 with both
      * ids in the log, which is what an operator needs to unpick it.
      */
-    private FeePayment requireOneAttemptFor(String providerOrderId) {
-        List<FeePayment> candidates = payments.findByProviderOrderId(providerOrderId);
+    private FeePaymentAttemptRef requireOneAttemptFor(String providerOrderId) {
+        List<FeePaymentAttemptRef> candidates = payments.findAttemptRefsByProviderOrderId(providerOrderId);
         if (candidates.isEmpty()) {
             throw ApiException.notFound("payment order", providerOrderId);
         }
@@ -321,7 +353,7 @@ public class PaymentService {
             log.error("Order reference '{}' is recorded against {} payments ({}). A callback for it "
                             + "cannot be attributed and has been refused.",
                     providerOrderId, candidates.size(),
-                    candidates.stream().map(FeePayment::getId).toList());
+                    candidates.stream().map(FeePaymentAttemptRef::id).toList());
             throw new ApiException(ErrorCode.INTERNAL,
                     "This payment confirmation could not be matched to a single payment");
         }

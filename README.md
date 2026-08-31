@@ -42,7 +42,7 @@ covers the console, including the one setting that trips everybody up
 ## Layout
 
 ```
-backend/     Spring Boot — 187 source files, 24 controllers, 72 endpoints
+backend/     Spring Boot — 189 source files, 26 controllers, 72 endpoints
 frontend/    Next.js App Router — 28 routes, 46 source files
 docs/        concurrency.md
 ```
@@ -60,6 +60,7 @@ production start.
 **Concurrency is enforced by the database, never by a check in Java.** A read
 followed by a write is two statements, and the gap between them is where the bug
 lives. So bed allocation takes a `SELECT ... FOR UPDATE` on the room; payment
+settlement takes one on the attempt and then on the invoice, in that order; payment
 idempotency rests on `uq_fee_payments_idempotency` rather than on the lookup that
 precedes it; the absence scan is idempotent because it is a function of the
 attendance register rather than of its own history. Each choice — including the two
@@ -95,8 +96,8 @@ with consequences — argued in `frontend/src/lib/session.ts`.
 
 | | |
 | --- | --- |
-| Unit | **231**, passing (`cd backend && ./mvnw test`) |
-| Integration | **126** executions across 8 classes — run in CI, never on this machine |
+| Unit | **232**, passing (`cd backend && ./mvnw test`) |
+| Integration | **127** executions across 8 classes — run in CI, never on this machine |
 
 The integration tests need a Docker daemon for Testcontainers, and the machine this
 was written on does not have one, so they have still never run locally. They compile
@@ -108,6 +109,10 @@ unit suite had all missed — 229 tests at that commit, all passing — because 
 them lives in behaviour a mock cannot have: an entity/DDL type mismatch, and two
 transactions whose rollback semantics were wrong. All three are fixed and a second CI run
 confirms it; `docs/concurrency.md` §6 has the detail.
+
+One of the 127 has never executed anywhere: `concurrentRedeliveriesOfAPartPaymentCreditTheInvoiceOnce`
+arrived with the §3 fix on 2026-08-27, after the last CI run. It compiles and is argued in
+detail; it is not yet proven.
 
 ```bash
 cd backend && ./mvnw verify   # unit (surefire) + integration (failsafe) — needs Docker
@@ -125,12 +130,13 @@ that matter — they are the only executable evidence for the claims in
 
 Stated rather than discovered later:
 
-- **`PaymentService.settle` can double-credit a partial payment** when two
-  callbacks for one attempt arrive together. Real, understood, reproducible on
-  paper, and deliberately still open — with the mechanism and three candidate
-  fixes written out in [`docs/concurrency.md`](docs/concurrency.md#the-open-defect).
-  The concurrent partial case is **not** asserted by a test, because committing a
-  knowingly-failing test invites the next person to delete it rather than read it.
+- **The §3 partial-settlement fix has not been run by a database yet.** `settle` now
+  locks the attempt row before the invoice, which closes the double-credit this file
+  listed as an open defect until 2026-08-27. The reasoning, the trace it replaces,
+  and the Hibernate trap that makes the naive version of the fix a no-op are in
+  [`docs/concurrency.md`](docs/concurrency.md#why-two-locks-and-not-one). The test
+  that proves it needs Docker, so it is committed and unexecuted until the next CI
+  run — an argued fix, not a verified one.
 - **The integration suite runs only in CI**, never on the machine it was written on.
   Its first run found three production defects — see
   [`docs/concurrency.md`](docs/concurrency.md) §6 — all three since confirmed fixed by a

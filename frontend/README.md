@@ -195,8 +195,5 @@ who reaches a student URL gets a 403 from Spring, not just a redirect from here.
   (`strict`, `noUnusedLocals`, `noUnusedParameters`) and `npm run build` fails on a type
   error, which catches contract drift against `types.ts` but nothing about behaviour.
 - **No caching between navigations**, by design — see above.
-- **`PaymentService.settle` has a known race** on partial payments (two callbacks for the
-  same attempt arriving together can double-credit). It is a server-side defect, tracked
-  in `docs/concurrency.md`, and this app does not try to work around it.
 - **The backend's integration tests need Docker** (Testcontainers) and have not been run on
   the machine this was built on. Nothing here reports them as passing.

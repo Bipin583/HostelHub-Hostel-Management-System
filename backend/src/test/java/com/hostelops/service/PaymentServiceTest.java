@@ -30,6 +30,7 @@ import com.hostelops.payment.PaymentGateway;
 import com.hostelops.payment.PaymentGatewayException;
 import com.hostelops.payment.PaymentGatewayRegistry;
 import com.hostelops.payment.PaymentOrderRequest;
+import com.hostelops.repository.FeePaymentAttemptRef;
 import com.hostelops.repository.FeePaymentRepository;
 import com.hostelops.repository.HostelFeeRepository;
 import com.hostelops.security.AccessScope;
@@ -71,6 +72,12 @@ import org.springframework.http.HttpStatus;
  *       configured one -- asserted as {@code gateways.selected()} never being called;
  *   <li>the signature is checked before the payment's state is consulted, so an
  *       unauthentic caller cannot distinguish a settled attempt from an open one;
+ *   <li>the attempt row is read <em>once</em>, through {@code findByIdForUpdate}, and never
+ *       through {@code findById} -- the status guard is only as good as the read behind it,
+ *       and an unlocked read followed by a lock would leave the guard looking at state
+ *       Hibernate had already cached;
+ *   <li>the attempt is locked before the invoice, which is both the fix for the partial
+ *       double-credit and the lock ordering the whole codebase keeps;
  *   <li>the invoice is read through {@code findByIdForUpdate} and never through
  *       {@code findById}, because the read <em>is</em> the lock -- a test that only
  *       asserted the balance would pass against unlocked code;
@@ -412,27 +419,40 @@ class PaymentServiceTest {
     class Settling {
 
         @Test
-        @DisplayName("credits the invoice under the row lock, using the provider the row names")
+        @DisplayName("credits the invoice under both row locks, using the provider the row names")
         void creditsUnderTheRowLock() {
             HostelFee fee = unpaidFee(50_000L);
             FeePayment payment = pendingPayment(fee);
-            when(payments.findByProviderOrderId(ORDER_ID)).thenReturn(List.of(payment));
+            when(payments.findAttemptRefsByProviderOrderId(ORDER_ID)).thenReturn(List.of(attemptRef()));
             when(gateways.forProvider(STORED_PROVIDER)).thenReturn(gateway);
             when(gateway.verify(ORDER_ID, PROVIDER_PAYMENT_ID, SIGNATURE)).thenReturn(true);
+            when(payments.findByIdForUpdate(PAYMENT_ID)).thenReturn(Optional.of(payment));
             when(fees.findByIdForUpdate(FEE_ID)).thenReturn(Optional.of(fee));
 
             FeePaymentResponse response = service.settle(ORDER_ID, PROVIDER_PAYMENT_ID, SIGNATURE);
 
-            // The invoice is read through the locking finder and never through the plain
-            // one. This is the assertion that fails if somebody "simplifies" the lock
+            // Both rows are read through the locking finder and neither through the plain
+            // one. These are the assertions that fail if somebody "simplifies" a lock
             // away: the balance would still come out right in a single-threaded test.
+            verify(payments).findByIdForUpdate(PAYMENT_ID);
+            verify(payments, never()).findById(anyLong());
             verify(fees).findByIdForUpdate(FEE_ID);
             verify(fees, never()).findById(anyLong());
 
-            // Verification first, then the lock -- so the lock is held for the shortest
-            // span, and an unauthentic caller never causes one to be taken at all.
-            InOrder order = inOrder(gateway, fees, payments);
+            // The attempt is resolved as scalars, so the entity's only read is the locked
+            // one. Loading it unlocked first would be worse than useless: Hibernate keeps
+            // the instance already in the session and discards what the FOR UPDATE read,
+            // so the status guard below would run against the pre-race copy and the lock
+            // would be held for nothing.
+            verify(payments).findAttemptRefsByProviderOrderId(ORDER_ID);
+
+            // Verification first, then the attempt lock, then the invoice lock. The first
+            // gap is security -- an unauthentic caller never causes a lock to be taken. The
+            // second is the ordering every lock in this codebase keeps, and it is what makes
+            // the status guard true at the moment it is read.
+            InOrder order = inOrder(gateway, payments, fees);
             order.verify(gateway).verify(ORDER_ID, PROVIDER_PAYMENT_ID, SIGNATURE);
+            order.verify(payments).findByIdForUpdate(PAYMENT_ID);
             order.verify(fees).findByIdForUpdate(FEE_ID);
             order.verify(fees).save(fee);
             order.verify(payments).save(payment);
@@ -464,9 +484,10 @@ class PaymentServiceTest {
             HostelFee fee = unpaidFee(50_000L);
             FeePayment payment = pendingPayment(fee);
             payment.setAmountPaise(20_000L);
-            when(payments.findByProviderOrderId(ORDER_ID)).thenReturn(List.of(payment));
+            when(payments.findAttemptRefsByProviderOrderId(ORDER_ID)).thenReturn(List.of(attemptRef()));
             when(gateways.forProvider(STORED_PROVIDER)).thenReturn(gateway);
             when(gateway.verify(ORDER_ID, PROVIDER_PAYMENT_ID, SIGNATURE)).thenReturn(true);
+            when(payments.findByIdForUpdate(PAYMENT_ID)).thenReturn(Optional.of(payment));
             when(fees.findByIdForUpdate(FEE_ID)).thenReturn(Optional.of(fee));
 
             service.settle(ORDER_ID, PROVIDER_PAYMENT_ID, SIGNATURE);
@@ -474,27 +495,31 @@ class PaymentServiceTest {
             assertThat(fee.getAmountPaidPaise()).isEqualTo(20_000L);
             assertThat(fee.outstandingPaise()).isEqualTo(30_000L);
             assertThat(fee.getStatus()).isEqualTo(FeeStatus.PARTIALLY_PAID);
+
+            // The partial path is the one the attempt lock exists for: an invoice with room
+            // left cannot refuse a second credit, so nothing but the lock stops a redelivery
+            // taking it. Proved concurrently in PaymentCallbackIT.
+            verify(payments).findByIdForUpdate(PAYMENT_ID);
         }
 
         @Test
         @DisplayName("an unknown order reference is a 404")
         void anUnknownOrderReferenceIsNotFound() {
-            when(payments.findByProviderOrderId(ORDER_ID)).thenReturn(List.of());
+            when(payments.findAttemptRefsByProviderOrderId(ORDER_ID)).thenReturn(List.of());
 
             assertThatThrownBy(() -> service.settle(ORDER_ID, PROVIDER_PAYMENT_ID, SIGNATURE))
                     .isInstanceOf(ApiException.class)
                     .satisfies(thrown -> assertThat(((ApiException) thrown).getCode())
                             .isEqualTo(ErrorCode.NOT_FOUND));
             verifyNoInteractions(gateways, fees);
+            verify(payments, never()).findByIdForUpdate(anyLong());
         }
 
         @Test
         @DisplayName("two attempts for one order reference is refused rather than guessed at")
         void twoAttemptsForOneOrderReferenceIsRefused() {
-            FeePayment first = pendingPayment(unpaidFee(50_000L));
-            FeePayment second = pendingPayment(unpaidFee(50_000L));
-            second.setId(PAYMENT_ID + 1);
-            when(payments.findByProviderOrderId(ORDER_ID)).thenReturn(List.of(first, second));
+            when(payments.findAttemptRefsByProviderOrderId(ORDER_ID)).thenReturn(List.of(
+                    attemptRef(), new FeePaymentAttemptRef(PAYMENT_ID + 1, STORED_PROVIDER)));
 
             // provider_order_id carries no unique constraint (see the repository), so
             // "exactly one" has to be checked. There is no correct guess: the signature
@@ -505,13 +530,13 @@ class PaymentServiceTest {
                     .satisfies(thrown -> assertThat(((ApiException) thrown).getCode())
                             .isEqualTo(ErrorCode.INTERNAL));
             verifyNoInteractions(gateways, fees);
+            verify(payments, never()).findByIdForUpdate(anyLong());
         }
 
         @Test
         @DisplayName("a provider with no registered adapter is a gateway error, not a verification failure")
         void aMissingAdapterIsAGatewayError() {
-            when(payments.findByProviderOrderId(ORDER_ID))
-                    .thenReturn(List.of(pendingPayment(unpaidFee(50_000L))));
+            when(payments.findAttemptRefsByProviderOrderId(ORDER_ID)).thenReturn(List.of(attemptRef()));
             when(gateways.forProvider(STORED_PROVIDER))
                     .thenThrow(new PaymentGatewayException("No adapter is registered for provider 'razorpay'"));
 
@@ -525,6 +550,7 @@ class PaymentServiceTest {
                         assertThat(e.getCode()).isEqualTo(ErrorCode.PAYMENT_GATEWAY_ERROR);
                         assertThat(e.getDetails()).containsEntry("provider", STORED_PROVIDER);
                     });
+            verify(payments, never()).findByIdForUpdate(anyLong());
             verify(fees, never()).findByIdForUpdate(anyLong());
         }
 
@@ -533,7 +559,9 @@ class PaymentServiceTest {
         void aBadSignatureIsRejectedBeforeTheStatus() {
             FeePayment alreadySettled = pendingPayment(unpaidFee(50_000L));
             alreadySettled.succeed(PROVIDER_PAYMENT_ID, Instant.now());
-            when(payments.findByProviderOrderId(ORDER_ID)).thenReturn(List.of(alreadySettled));
+            when(payments.findAttemptRefsByProviderOrderId(ORDER_ID)).thenReturn(List.of(attemptRef()));
+            // Available for the taking, and deliberately not taken -- see the assertion below.
+            lenient().when(payments.findByIdForUpdate(PAYMENT_ID)).thenReturn(Optional.of(alreadySettled));
             when(gateways.forProvider(STORED_PROVIDER)).thenReturn(gateway);
             when(gateway.verify(ORDER_ID, PROVIDER_PAYMENT_ID, "forged")).thenReturn(false);
 
@@ -548,6 +576,9 @@ class PaymentServiceTest {
                         assertThat(e.getCode()).isEqualTo(ErrorCode.PAYMENT_VERIFICATION_FAILED);
                         assertThat(e.getDetails()).containsEntry("providerOrderId", ORDER_ID);
                     });
+            // No lock of either kind for a caller who has not proved who they are. A forged
+            // callback must not be able to make real callbacks queue behind it.
+            verify(payments, never()).findByIdForUpdate(anyLong());
             verify(fees, never()).findByIdForUpdate(anyLong());
             verify(payments, never()).save(any());
         }
@@ -557,12 +588,14 @@ class PaymentServiceTest {
         void aRedeliveredCallbackCreditsNothingTwice() {
             FeePayment settled = pendingPayment(unpaidFee(50_000L));
             settled.succeed(PROVIDER_PAYMENT_ID, Instant.now());
-            when(payments.findByProviderOrderId(ORDER_ID)).thenReturn(List.of(settled));
+            when(payments.findAttemptRefsByProviderOrderId(ORDER_ID)).thenReturn(List.of(attemptRef()));
             when(gateways.forProvider(STORED_PROVIDER)).thenReturn(gateway);
             when(gateway.verify(ORDER_ID, PROVIDER_PAYMENT_ID, SIGNATURE)).thenReturn(true);
+            when(payments.findByIdForUpdate(PAYMENT_ID)).thenReturn(Optional.of(settled));
 
             // Every gateway redelivers webhooks. This is the check that stops the second
-            // delivery crediting the invoice again.
+            // delivery crediting the invoice again -- and it is read under the attempt lock,
+            // which is what makes it true of the committed row rather than of a cached copy.
             assertThatThrownBy(() -> service.settle(ORDER_ID, PROVIDER_PAYMENT_ID, SIGNATURE))
                     .isInstanceOf(ApiException.class)
                     .satisfies(thrown -> {
@@ -572,8 +605,28 @@ class PaymentServiceTest {
                                 .containsEntry("paymentId", PAYMENT_ID)
                                 .containsEntry("status", "SUCCEEDED");
                     });
+            verify(payments).findByIdForUpdate(PAYMENT_ID);
             verify(fees, never()).findByIdForUpdate(anyLong());
             verify(fees, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("an attempt that has vanished under the callback is a 500, not a 404")
+        void aVanishedAttemptIsInternal() {
+            when(payments.findAttemptRefsByProviderOrderId(ORDER_ID)).thenReturn(List.of(attemptRef()));
+            when(gateways.forProvider(STORED_PROVIDER)).thenReturn(gateway);
+            when(gateway.verify(ORDER_ID, PROVIDER_PAYMENT_ID, SIGNATURE)).thenReturn(true);
+            when(payments.findByIdForUpdate(PAYMENT_ID)).thenReturn(Optional.empty());
+
+            // The scalar lookup found the row a moment ago and nothing deletes payments, so
+            // this cannot happen. A 404 would tell the payer their reference was wrong when
+            // it was not; the reference was fine and somebody needs to look at the database.
+            assertThatThrownBy(() -> service.settle(ORDER_ID, PROVIDER_PAYMENT_ID, SIGNATURE))
+                    .isInstanceOf(ApiException.class)
+                    .satisfies(thrown -> assertThat(((ApiException) thrown).getCode())
+                            .isEqualTo(ErrorCode.INTERNAL));
+            verify(fees, never()).findByIdForUpdate(anyLong());
+            verify(payments, never()).save(any());
         }
 
         @Test
@@ -583,9 +636,10 @@ class PaymentServiceTest {
             FeePayment payment = pendingPayment(fee);
             // Another attempt settled the invoice while this checkout was open.
             fee.applyPayment(50_000L);
-            when(payments.findByProviderOrderId(ORDER_ID)).thenReturn(List.of(payment));
+            when(payments.findAttemptRefsByProviderOrderId(ORDER_ID)).thenReturn(List.of(attemptRef()));
             when(gateways.forProvider(STORED_PROVIDER)).thenReturn(gateway);
             when(gateway.verify(ORDER_ID, PROVIDER_PAYMENT_ID, SIGNATURE)).thenReturn(true);
+            when(payments.findByIdForUpdate(PAYMENT_ID)).thenReturn(Optional.of(payment));
             when(fees.findByIdForUpdate(FEE_ID)).thenReturn(Optional.of(fee));
 
             assertThatThrownBy(() -> service.settle(ORDER_ID, PROVIDER_PAYMENT_ID, SIGNATURE))
@@ -615,9 +669,10 @@ class PaymentServiceTest {
             HostelFee fee = unpaidFee(50_000L);
             FeePayment payment = pendingPayment(fee);
             fee.cancel();
-            when(payments.findByProviderOrderId(ORDER_ID)).thenReturn(List.of(payment));
+            when(payments.findAttemptRefsByProviderOrderId(ORDER_ID)).thenReturn(List.of(attemptRef()));
             when(gateways.forProvider(STORED_PROVIDER)).thenReturn(gateway);
             when(gateway.verify(ORDER_ID, PROVIDER_PAYMENT_ID, SIGNATURE)).thenReturn(true);
+            when(payments.findByIdForUpdate(PAYMENT_ID)).thenReturn(Optional.of(payment));
             when(fees.findByIdForUpdate(FEE_ID)).thenReturn(Optional.of(fee));
 
             // HostelFee.applyPayment throws IllegalStateException here and
@@ -635,9 +690,10 @@ class PaymentServiceTest {
         @DisplayName("an invoice that has vanished under the payment is a 500, not a 404")
         void aVanishedInvoiceIsInternal() {
             FeePayment payment = pendingPayment(unpaidFee(50_000L));
-            when(payments.findByProviderOrderId(ORDER_ID)).thenReturn(List.of(payment));
+            when(payments.findAttemptRefsByProviderOrderId(ORDER_ID)).thenReturn(List.of(attemptRef()));
             when(gateways.forProvider(STORED_PROVIDER)).thenReturn(gateway);
             when(gateway.verify(ORDER_ID, PROVIDER_PAYMENT_ID, SIGNATURE)).thenReturn(true);
+            when(payments.findByIdForUpdate(PAYMENT_ID)).thenReturn(Optional.of(payment));
             when(fees.findByIdForUpdate(FEE_ID)).thenReturn(Optional.empty());
 
             // The payment row has a NOT NULL foreign key to the invoice, so this is
@@ -715,6 +771,18 @@ class PaymentServiceTest {
         payment.setIdempotencyKey(KEY);
         payment.setCreatedAt(Instant.parse("2026-08-01T10:00:00Z"));
         return payment;
+    }
+
+    /**
+     * What the callback resolves to: two scalars, not an entity.
+     *
+     * <p>The shape matters to the test as much as to the production code. A fixture that
+     * handed {@code settle} a ready-made {@code FeePayment} at this point would be stubbing
+     * away the very step the fix consists of -- reading the row for the first time under the
+     * lock -- and would go on passing if somebody put the unlocked read back.
+     */
+    private static FeePaymentAttemptRef attemptRef() {
+        return new FeePaymentAttemptRef(PAYMENT_ID, STORED_PROVIDER);
     }
 
     private static Student student() {

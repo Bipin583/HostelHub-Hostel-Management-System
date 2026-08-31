@@ -38,15 +38,20 @@ import org.springframework.http.ResponseEntity;
  * verification branch under test is the one production takes -- there is no test-only bypass,
  * which is the point of the mock holding a real secret rather than a flag that skips the check.
  *
- * <h2>Why the racing fixture pays in full</h2>
+ * <h2>Why there are two racing fixtures</h2>
  *
  * <p>{@link #concurrentRedeliveriesCreditTheInvoiceOnce} races a payment for the invoice's whole
- * balance. That is deliberate and it is narrower than it looks: what makes the full-amount case
- * safe is partly {@code HostelFee.applyPayment} refusing to overshoot, and a <em>partial</em>
- * payment redelivered concurrently is not protected by that -- see the note on that method. The
- * partial path is therefore proven sequentially, below, and the concurrent partial case is a
- * known finding rather than a test asserted to pass. A committed test that is expected to fail
- * teaches the suite to be ignored.
+ * balance, and on its own it proves less than it appears to. A full-amount redelivery is refused
+ * partly by {@code HostelFee.applyPayment} declining to overshoot, so that test passes even if
+ * the attempt row is never locked at all -- which is exactly what used to happen, and what
+ * {@code docs/concurrency.md} §3 recorded as an open defect for two days.
+ *
+ * <p>{@link #concurrentRedeliveriesOfAPartPaymentCreditTheInvoiceOnce} is the fixture with no
+ * such accidental help. Half an invoice leaves room for a second credit, so nothing in the
+ * domain model objects; the only thing standing between one part payment and two credits is the
+ * lock {@code PaymentService.settle} takes on the attempt row before it reads the status. Racing
+ * the partial case is therefore the test that fails against the old code, and the pair of them
+ * together says both that the guarantee holds and where it comes from.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class PaymentCallbackIT extends AbstractPostgresIT {
@@ -74,7 +79,7 @@ class PaymentCallbackIT extends AbstractPostgresIT {
     private MockPaymentGateway mockGateway;
 
     // ------------------------------------------------------------------
-    // The headline case
+    // The headline cases
     // ------------------------------------------------------------------
 
     @Test
@@ -97,7 +102,10 @@ class PaymentCallbackIT extends AbstractPostgresIT {
         // 1. The money is the invariant. A second credit would take amount_paid_paise past
         //    the invoice total -- the lost-update race from the allocation code, in a
         //    different table: two callbacks read the old balance, both add to it, and the
-        //    later write erases the earlier one. What prevents it is findByIdForUpdate.
+        //    later write erases the earlier one. Two locks prevent it, and here only one of
+        //    them is doing visible work: the invoice cannot absorb a second full payment
+        //    anyway, so this case would pass without the attempt lock. The test below is
+        //    the one that would not.
         assertThat(amountPaidPaiseOf(fee.feeId()))
                 .as("paise credited to invoice %d after %d simultaneous callbacks",
                         fee.feeId(), callbacks)
@@ -127,6 +135,73 @@ class PaymentCallbackIT extends AbstractPostgresIT {
                     assertThat(response.getBody())
                             .doesNotContain("uq_", "ck_", "SQLState", "org.postgresql");
                 });
+    }
+
+    @Test
+    @DisplayName("six simultaneous redeliveries of a part payment credit the invoice once")
+    void concurrentRedeliveriesOfAPartPaymentCreditTheInvoiceOnce() throws Exception {
+        int callbacks = 6;
+
+        SeededStudent student = seedStudent(Gender.M, 4);
+        String token = accessTokenForStudent(student);
+        SeededFee fee = seedFee(student.studentId(), DUE_DATE, FEE_AMOUNT_PAISE);
+
+        // Half the invoice, which is what makes this the sharp case: the balance has room
+        // for a second credit, so the domain model has no reason to refuse one.
+        PaymentInitiationResponse opened =
+                initiate(token, fee.feeId(), HALF_PAISE, idempotencyKey());
+        String paymentRef = paymentReference();
+        String signature = mockGateway.signatureFor(opened.providerOrderId(), paymentRef);
+
+        List<ResponseEntity<String>> responses = simultaneously(callbacks,
+                index -> postCallback(token, opened.providerOrderId(), paymentRef, signature));
+
+        // 1. The whole test, in one number. Against the code before the attempt lock this
+        //    read HALF * 2: both transactions passed the PENDING guard, the first credited
+        //    half and committed, the second re-read the balance, found room, credited half
+        //    again, and re-settled the same row on top of the first. One payment of 22,500
+        //    marked a 45,000 invoice paid in full. What stops it is that the status is now
+        //    read through findByIdForUpdate on the attempt, so the loser blocks until the
+        //    winner commits and then sees SUCCEEDED rather than its own stale copy.
+        assertThat(amountPaidPaiseOf(fee.feeId()))
+                .as("paise credited to invoice %d by %d simultaneous callbacks for one %d-paise attempt",
+                        fee.feeId(), callbacks, HALF_PAISE)
+                .isEqualTo(HALF_PAISE);
+
+        // 2. And the invoice still says so. A double credit would have reached exactly the
+        //    total, so a status assertion alone would have looked correct -- which is why
+        //    the paise come first and this is the corroboration, not the proof.
+        assertThat(feeStatusOf(fee.feeId())).isEqualTo("PARTIALLY_PAID");
+
+        // 3. One charge, one settled row. The attempt is the audit record; two writes to it
+        //    means the second overwrote a record of money that had already been credited.
+        assertThat(paymentCountForFee(fee.feeId(), PaymentStatus.SUCCEEDED)).isEqualTo(1);
+        assertThat(paymentCountForFee(fee.feeId())).as("no extra attempts were invented").isEqualTo(1);
+
+        // 4. Exactly one caller was told it succeeded, and every loser was told the same
+        //    thing: this attempt is already settled. Unlike the full-amount race there is
+        //    no FEE_ALREADY_SETTLED alternative here, because the invoice never fills up --
+        //    so if the attempt guard were not doing the work, nothing would be.
+        assertThat(statusCount(responses, HttpStatus.OK)).isEqualTo(1);
+        assertThat(statusCount(responses, HttpStatus.CONFLICT)).isEqualTo(callbacks - 1);
+        assertThat(responses).noneMatch(response -> response.getStatusCode().is5xxServerError());
+        responses.stream()
+                .filter(response -> response.getStatusCode() == HttpStatus.CONFLICT)
+                .forEach(response -> {
+                    assertThat(errorCodeOf(response)).isEqualTo("PAYMENT_ALREADY_SETTLED");
+                    assertThat(response.getBody())
+                            .doesNotContain("uq_", "ck_", "SQLState", "org.postgresql");
+                });
+
+        // 5. The balance is still owed and still payable. A race that ended in a lock
+        //    timeout or a poisoned row would leave the student unable to finish paying,
+        //    which would be a worse outcome than the double credit it replaced.
+        PaymentInitiationResponse remainder =
+                initiate(token, fee.feeId(), HALF_PAISE, idempotencyKey());
+        assertThat(confirm(token, remainder.providerOrderId(), paymentReference()).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(amountPaidPaiseOf(fee.feeId())).isEqualTo(FEE_AMOUNT_PAISE);
+        assertThat(feeStatusOf(fee.feeId())).isEqualTo("PAID");
     }
 
     @Test

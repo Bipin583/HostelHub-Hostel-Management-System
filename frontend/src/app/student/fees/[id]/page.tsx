@@ -47,10 +47,11 @@
  * <h3>Partial payments</h3>
  *
  * <p>The amount is editable up to the outstanding balance, because paying a term fee in
- * instalments is normal. See docs/concurrency.md for the known race in
- * `PaymentService.settle` when two callbacks for the same partial attempt arrive at once
- * -- it is a server-side defect, tracked, and not something this page can or should
- * paper over.
+ * instalments is normal. Redelivering a partial callback used to double-credit the invoice
+ * server-side; that was fixed on 2026-08-27 by locking the attempt row, and the reasoning
+ * is in docs/concurrency.md §3. It was never something this page could or should have
+ * papered over, and it is not something this page has to know about now either -- the
+ * idempotency key below is the only half of the guarantee that lives in the client.
  */
 
 import Link from 'next/link';

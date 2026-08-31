@@ -2,11 +2,13 @@ package com.hostelops.repository;
 
 import com.hostelops.domain.FeePayment;
 import com.hostelops.domain.Gender;
+import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
 import org.springframework.data.repository.query.Param;
@@ -48,12 +50,16 @@ public interface FeePaymentRepository extends Repository<FeePayment, Long> {
     Optional<FeePayment> findByProviderAndProviderOrderId(String provider, String providerOrderId);
 
     /**
-     * Every attempt carrying a given provider order reference.
+     * Every attempt carrying a given provider order reference, as scalars.
      *
      * <p>This is how a callback finds its row, and it deliberately does not take a
      * provider: the provider is what the stored row *tells* us, and a caller who could
      * name it would be choosing which secret verifies their signature. See
      * {@code PaymentService.settle}.
+     *
+     * <p>A projection rather than the entity, because the entity must be loaded for the
+     * first time by {@link #findByIdForUpdate} and not before -- see
+     * {@link FeePaymentAttemptRef} for what goes wrong when it is loaded twice.
      *
      * <p>A list rather than an {@code Optional}, because the schema does not promise
      * uniqueness here. {@code uq_fee_payments_provider_ref} covers
@@ -71,7 +77,44 @@ public interface FeePaymentRepository extends Repository<FeePayment, Long> {
      * {@code uq_fee_payments_provider_ref} -- is a one-line V2 whenever the volume
      * justifies it.
      */
-    List<FeePayment> findByProviderOrderId(String providerOrderId);
+    @Query("""
+            select new com.hostelops.repository.FeePaymentAttemptRef(p.id, p.provider)
+            from FeePayment p
+            where p.providerOrderId = :providerOrderId
+            """)
+    List<FeePaymentAttemptRef> findAttemptRefsByProviderOrderId(
+            @Param("providerOrderId") String providerOrderId);
+
+    /**
+     * Takes a row-level write lock on one attempt, then returns it.
+     *
+     * <p>The third lock in this codebase, and the last one, alongside
+     * {@code RoomRepository.findByIdForUpdate} and
+     * {@code HostelFeeRepository.findByIdForUpdate}. It exists because locking the invoice
+     * is not sufficient on its own: it serialises two concurrent callbacks for one attempt
+     * but does not stop either of them proceeding, and a <em>part</em> payment has room to
+     * be credited twice before {@code HostelFee.applyPayment} refuses to overshoot. The
+     * second credit then re-settles the attempt row on top of the first, and one payment
+     * has paid an invoice twice. See {@code docs/concurrency.md} §3.
+     *
+     * <p>Chosen over adding {@code @Version} to {@code FeePayment} because a version column
+     * is a schema change and the schema is frozen, and because a redelivered callback is not
+     * a retry-hostile operation the way allocation is -- the loser wants a 409, not another
+     * attempt.
+     *
+     * <p><b>This must be the attempt's first read in the transaction.</b> Hibernate returns
+     * an already-managed instance and discards the state its own {@code FOR UPDATE} read, so
+     * a lock taken on a row that is already in the session serialises the transactions and
+     * leaves both of them looking at a stale {@code PENDING}. {@code settle} therefore
+     * resolves the callback through {@link #findAttemptRefsByProviderOrderId} first, which
+     * manages nothing.
+     *
+     * <p>Deliberately unscoped, like the other two: locking must not depend on who is
+     * asking. A provider callback has no scope at all.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from FeePayment p where p.id = :id")
+    Optional<FeePayment> findByIdForUpdate(@Param("id") Long id);
 
     /** Attempts against one invoice, newest first. Uses {@code idx_fee_payments_fee}. */
     List<FeePayment> findByFeeIdOrderByCreatedAtDesc(Long feeId);

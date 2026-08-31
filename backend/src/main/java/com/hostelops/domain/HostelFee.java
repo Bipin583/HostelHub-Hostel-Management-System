@@ -120,6 +120,13 @@ public class HostelFee {
      * without that lock would both read the same {@code amountPaidPaise}, and the
      * second write would erase the first: the fee-ledger form of the double-booking
      * race, with the same fix.
+     *
+     * <p>The overpayment refusal above is not a substitute for that lock, and it is not
+     * even a partial one where it looks like it should be. It stops one payment being
+     * credited twice only when the payment is for the whole outstanding balance; a part
+     * payment redelivered concurrently leaves room, so the second credit is legitimate
+     * arithmetic and passes. That is why the service locks the payment row as well as
+     * this one -- {@code docs/concurrency.md} §3.
      */
     public void applyPayment(long paise) {
         if (paise <= 0) {
