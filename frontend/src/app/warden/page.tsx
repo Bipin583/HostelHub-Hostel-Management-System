@@ -20,8 +20,36 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 import { warden } from '@/lib/endpoints';
 import { useQuery } from '@/lib/use-query';
-import { formatDate, formatDayMonth, formatMoney, plural, shiftIsoDate, todayIso } from '@/lib/format';
-import { Card, DataState, EmptyState, PageHead, StatCard, TableWrap } from '@/components/ui';
+import {
+  formatDate,
+  formatDayMonth,
+  formatFraction,
+  formatMoney,
+  plural,
+  shiftIsoDate,
+  todayIso,
+} from '@/lib/format';
+import {
+  Avatar,
+  Card,
+  DataState,
+  EmptyState,
+  Meter,
+  PageHead,
+  StatCard,
+  TableWrap,
+} from '@/components/ui';
+import {
+  IconAlert,
+  IconCalendar,
+  IconChart,
+  IconCheckCircle,
+  IconClipboard,
+  IconMegaphone,
+  IconMessage,
+  IconReceipt,
+  IconWallet,
+} from '@/components/icons';
 import { AlertStateBadge, ApplicationStatusBadge } from '@/components/status-badges';
 import type { AttendanceTrend } from '@/lib/types';
 
@@ -48,20 +76,34 @@ export default function WardenDashboardPage() {
       <DataState query={dashboard} skeletonRows={2} errorTitle="Could not load the dashboard">
         {(data) => (
           <div className="stat-grid">
-            <StatCard label="Unpaid fees" value={data.unpaidFees} href="/warden/fees" note="Invoices outstanding" />
+            <StatCard
+              label="Unpaid fees"
+              value={data.unpaidFees}
+              href="/warden/fees"
+              note="Invoices outstanding"
+              icon={IconReceipt}
+            />
             <StatCard
               label="Open complaints"
               value={data.openComplaints}
               href="/warden/complaints"
               note="Not yet resolved"
+              icon={IconMessage}
             />
             <StatCard
               label="Absence alerts"
               value={data.openAbsenceAlerts}
               href="/warden/absence-alerts"
               note="Awaiting acknowledgement"
+              icon={IconAlert}
             />
-            <StatCard label="Notices posted" value={data.noticesPosted} href="/warden/notices" note="By you" />
+            <StatCard
+              label="Notices posted"
+              value={data.noticesPosted}
+              href="/warden/notices"
+              note="By you"
+              icon={IconMegaphone}
+            />
           </div>
         )}
       </DataState>
@@ -69,6 +111,7 @@ export default function WardenDashboardPage() {
       <Card
         title="Attendance, last 14 days"
         subtitle="Present against absent, per marked day"
+        icon={IconChart}
         actions={<Link href="/warden/attendance">Open register</Link>}
       >
         <DataState query={trend} skeletonRows={3} errorTitle="Could not load the trend">
@@ -80,33 +123,39 @@ export default function WardenDashboardPage() {
         <Card
           title="Fee collection"
           subtitle="Across every term"
+          icon={IconWallet}
           actions={<Link href="/warden/fees">All fees</Link>}
         >
           <DataState query={collections} skeletonRows={3}>
             {(data) => (
-              <div className="stack-sm">
-                <div className="spread">
-                  <span className="muted small">Billed</span>
-                  <span className="nums">{formatMoney(data.totals.billedPaise)}</span>
+              <div className="stack">
+                <div className="stack-sm">
+                  <div className="spread">
+                    <span className="muted small">Billed</span>
+                    <span className="nums">{formatMoney(data.totals.billedPaise)}</span>
+                  </div>
+                  <div className="spread">
+                    <span className="muted small">Collected</span>
+                    <span className="nums">{formatMoney(data.totals.collectedPaise)}</span>
+                  </div>
+                  <div className="spread">
+                    <span className="muted small">Outstanding</span>
+                    {/* The one figure a warden acts on, so it is the one marked up as
+                        important rather than merely styled that way. */}
+                    <strong className="nums">{formatMoney(data.totals.outstandingPaise)}</strong>
+                  </div>
                 </div>
-                <div className="spread">
-                  <span className="muted small">Collected</span>
-                  <span className="nums">{formatMoney(data.totals.collectedPaise)}</span>
-                </div>
-                <div className="spread">
-                  <span className="muted small">Outstanding</span>
-                  <span className="nums">{formatMoney(data.totals.outstandingPaise)}</span>
-                </div>
-                <div className="meter" aria-hidden="true">
-                  <div
-                    className={meterClass(data.totals.collectionRate)}
-                    style={{ width: `${clampPercent(data.totals.collectionRate)}%` }}
+                <div className="stack-sm">
+                  <Meter
+                    value={data.totals.collectionRate * 100}
+                    tone={meterTone(data.totals.collectionRate)}
+                    label={`${formatFraction(data.totals.collectionRate, 1)} of billed fees collected`}
                   />
+                  <span className="small faint">
+                    {formatFraction(data.totals.collectionRate, 1)} collected ·{' '}
+                    {plural(data.totals.overdueCount, 'overdue invoice')}
+                  </span>
                 </div>
-                <span className="small faint">
-                  {data.totals.collectionRate.toFixed(1)}% collected ·{' '}
-                  {plural(data.totals.overdueCount, 'overdue invoice')}
-                </span>
               </div>
             )}
           </DataState>
@@ -115,24 +164,27 @@ export default function WardenDashboardPage() {
         <Card
           title="Absence alerts"
           subtitle="Longest first"
+          icon={IconAlert}
           actions={<Link href="/warden/absence-alerts">All alerts</Link>}
         >
           <DataState query={alerts} skeletonRows={4}>
             {(page) =>
               page.content.length === 0 ? (
-                <EmptyState title="Nothing open">
+                <EmptyState title="Nothing open" icon={IconCheckCircle}>
                   No student is currently past the absence threshold.
                 </EmptyState>
               ) : (
-                <ul className="stack-sm">
+                <ul className="card-list">
                   {page.content.map((alert) => (
-                    <li key={alert.id} className="spread">
-                      <span className="stack-sm" style={{ gap: 0 }}>
+                    <li key={alert.id}>
+                      <Avatar name={alert.student.fullName} size="sm" />
+                      <span className="card-list-main">
                         <Link href={`/warden/students/${alert.student.id}`} className="cell-strong">
                           {alert.student.fullName}
                         </Link>
                         <span className="cell-sub">
-                          {alert.consecutiveDays} days from {formatDate(alert.streakStartDate)}
+                          {plural(alert.consecutiveDays, 'day')} from{' '}
+                          {formatDate(alert.streakStartDate)}
                         </span>
                       </span>
                       <AlertStateBadge acknowledged={alert.acknowledged} />
@@ -149,12 +201,13 @@ export default function WardenDashboardPage() {
         title="Pending applications"
         subtitle="Oldest first"
         flush
+        icon={IconClipboard}
         actions={<Link href="/warden/applications">All applications</Link>}
       >
         <DataState query={applications} skeletonRows={4}>
           {(page) =>
             page.content.length === 0 ? (
-              <EmptyState title="No applications waiting">
+              <EmptyState title="No applications waiting" icon={IconCheckCircle}>
                 Every request has been decided.
               </EmptyState>
             ) : (
@@ -171,9 +224,12 @@ export default function WardenDashboardPage() {
                   {page.content.map((application) => (
                     <tr key={application.id}>
                       <td>
-                        <Link href={`/warden/applications`} className="cell-strong">
-                          {application.fullName}
-                        </Link>
+                        <span className="row-tight">
+                          <Avatar name={application.fullName} size="sm" />
+                          <Link href="/warden/applications" className="cell-strong">
+                            {application.fullName}
+                          </Link>
+                        </span>
                       </td>
                       <td className="mono">{application.rollNumber}</td>
                       <td className="nowrap">{formatDate(application.appliedAt.slice(0, 10))}</td>
@@ -203,7 +259,11 @@ export default function WardenDashboardPage() {
 function TrendBars({ trend }: { trend: AttendanceTrend }) {
   const busiest = Math.max(1, ...trend.days.map((day) => day.marked));
   if (trend.days.length === 0) {
-    return <EmptyState title="No attendance in this window">Mark a register to see the trend.</EmptyState>;
+    return (
+      <EmptyState title="No attendance in this window" icon={IconCalendar}>
+        Mark a register to see the trend.
+      </EmptyState>
+    );
   }
   return (
     <div>
@@ -230,13 +290,15 @@ function TrendBars({ trend }: { trend: AttendanceTrend }) {
   );
 }
 
-function clampPercent(value: number): number {
-  return Math.max(0, Math.min(100, value));
-}
-
-/** Red under half collected, amber under four fifths, accent above. */
-function meterClass(rate: number): string {
-  if (rate < 50) return 'meter-fill meter-fill-danger';
-  if (rate < 80) return 'meter-fill meter-fill-warning';
-  return 'meter-fill';
+/**
+ * Red under half collected, amber under four fifths, brand above.
+ *
+ * <p>The thresholds live here rather than in `Meter` because they are specific to fee
+ * collection: 45% of beds occupied is a quiet term, and 45% of fees collected is a
+ * problem. The component draws a track; deciding what a number means is this page's job.
+ */
+function meterTone(rate: number): 'default' | 'warning' | 'danger' {
+  if (rate < 0.5) return 'danger';
+  if (rate < 0.8) return 'warning';
+  return 'default';
 }

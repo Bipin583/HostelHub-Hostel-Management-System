@@ -45,6 +45,16 @@ import {
   StatCard,
   TableWrap,
 } from '@/components/ui';
+import {
+  IconAlert,
+  IconBed,
+  IconCalendar,
+  IconCheckCircle,
+  IconMegaphone,
+  IconMessage,
+  IconReceipt,
+  IconWallet,
+} from '@/components/icons';
 import { AllocationStatusBadge, FeeStatusBadge } from '@/components/status-badges';
 
 export default function StudentOverviewPage() {
@@ -99,6 +109,7 @@ export default function StudentOverviewPage() {
           label="Outstanding"
           value={fees.data === undefined ? '--' : formatMoney(outstandingPaise)}
           href="/student/fees"
+          icon={IconReceipt}
           note={
             overdueCount > 0
               ? `${plural(overdueCount, 'invoice')} past due`
@@ -113,6 +124,7 @@ export default function StudentOverviewPage() {
             attendance.data === undefined ? '--' : formatPercent(attendance.data.presentPercentage, 1)
           }
           href="/student/attendance"
+          icon={IconCalendar}
           note={
             attendance.data === undefined
               ? undefined
@@ -125,18 +137,24 @@ export default function StudentOverviewPage() {
           label="Absence alerts"
           value={alerts.data === undefined ? '--' : openAlerts}
           href="/student/alerts"
+          icon={IconAlert}
           note={openAlerts === 0 ? 'None open' : 'Your warden has been notified'}
         />
         <StatCard
           label="Open complaints"
           value={dashboard.data === undefined ? '--' : dashboard.data.unresolvedComplaints}
           href="/student/complaints"
+          icon={IconMessage}
           note="Filed by you, not yet resolved"
         />
       </div>
 
       <div className="grid-2">
-        <Card title="My room" actions={<Link href="/student/application">Application</Link>}>
+        <Card
+          title="My room"
+          icon={IconBed}
+          actions={<Link href="/student/application">Application</Link>}
+        >
           <DataState query={me} skeletonRows={4} errorTitle="Could not load your record">
             {(detail) =>
               detail.currentRoom === null ? (
@@ -174,19 +192,27 @@ export default function StudentOverviewPage() {
           </DataState>
         </Card>
 
-        <Card title="Notices" actions={<Link href="/student/notices">All notices</Link>}>
+        <Card
+          title="Notices"
+          icon={IconMegaphone}
+          actions={<Link href="/student/notices">All notices</Link>}
+        >
           <DataState query={notices} skeletonRows={4} errorTitle="Could not load notices">
             {(page) =>
               page.content.length === 0 ? (
-                <EmptyState title="Nothing posted">
+                <EmptyState title="Nothing posted" icon={IconMegaphone}>
                   Notices for your hostel and year appear here.
                 </EmptyState>
               ) : (
-                <ul className="stack-sm">
+                <ul className="card-list">
                   {page.content.map((notice) => (
                     <li key={notice.id}>
-                      <span className="cell-strong">{notice.title}</span>
-                      <span className="cell-sub">{formatDateTime(notice.publishedAt)}</span>
+                      <span className="card-list-main">
+                        <Link href="/student/notices" className="cell-strong">
+                          {notice.title}
+                        </Link>
+                        <span className="cell-sub">{formatDateTime(notice.publishedAt)}</span>
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -200,12 +226,13 @@ export default function StudentOverviewPage() {
         flush
         title="What I owe"
         subtitle="Only invoices with something still outstanding"
+        icon={IconWallet}
         actions={<Link href="/student/fees">All fees</Link>}
       >
         <DataState query={fees} skeletonRows={4} errorTitle="Could not load your fees">
           {() =>
             owedFees.length === 0 ? (
-              <EmptyState title="Nothing outstanding">
+              <EmptyState title="Nothing outstanding" icon={IconCheckCircle}>
                 Every invoice raised against you is settled.
               </EmptyState>
             ) : (

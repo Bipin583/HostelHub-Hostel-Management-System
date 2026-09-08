@@ -15,17 +15,21 @@
  */
 
 import { AppShell, type NavSection } from '@/components/app-shell';
+import { IconClock, IconExternal, IconHistory } from '@/components/icons';
 import { useRequireRole } from '@/lib/auth';
 
 const SECTIONS: NavSection[] = [
   {
     label: 'Operations',
     items: [
-      { href: '/admin/jobs', label: 'Scheduled jobs' },
-      { href: '/admin/audit', label: 'Audit log' },
+      { href: '/admin/jobs', label: 'Scheduled jobs', icon: IconClock },
+      { href: '/admin/audit', label: 'Audit log', icon: IconHistory },
     ],
   },
-  { label: 'Elsewhere', items: [{ href: '/warden', label: 'Warden console' }] },
+  {
+    label: 'Elsewhere',
+    items: [{ href: '/warden', label: 'Warden console', icon: IconExternal }],
+  },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

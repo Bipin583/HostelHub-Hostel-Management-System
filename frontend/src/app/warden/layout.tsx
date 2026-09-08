@@ -17,39 +17,52 @@
  */
 
 import { AppShell, type NavSection } from '@/components/app-shell';
+import {
+  IconAlert,
+  IconBed,
+  IconClipboard,
+  IconDashboard,
+  IconInbox,
+  IconMegaphone,
+  IconMessage,
+  IconChart,
+  IconReceipt,
+  IconUsers,
+  IconWallet,
+} from '@/components/icons';
 import { useRequireRole } from '@/lib/auth';
 
 const SECTIONS: NavSection[] = [
-  { items: [{ href: '/warden', label: 'Dashboard', exact: true }] },
+  { items: [{ href: '/warden', label: 'Dashboard', exact: true, icon: IconDashboard }] },
   {
     label: 'Residents',
     items: [
-      { href: '/warden/students', label: 'Students' },
-      { href: '/warden/applications', label: 'Applications' },
-      { href: '/warden/allocations', label: 'Allocations' },
-      { href: '/warden/rooms', label: 'Rooms' },
-      { href: '/warden/occupancy', label: 'Occupancy' },
+      { href: '/warden/students', label: 'Students', icon: IconUsers },
+      { href: '/warden/applications', label: 'Applications', icon: IconInbox },
+      { href: '/warden/allocations', label: 'Allocations', icon: IconBed },
+      { href: '/warden/rooms', label: 'Rooms', icon: IconBed },
+      { href: '/warden/occupancy', label: 'Occupancy', icon: IconChart },
     ],
   },
   {
     label: 'Daily',
     items: [
-      { href: '/warden/attendance', label: 'Attendance' },
-      { href: '/warden/absence-alerts', label: 'Absence alerts' },
+      { href: '/warden/attendance', label: 'Attendance', icon: IconClipboard },
+      { href: '/warden/absence-alerts', label: 'Absence alerts', icon: IconAlert },
     ],
   },
   {
     label: 'Money',
     items: [
-      { href: '/warden/fees', label: 'Fees' },
-      { href: '/warden/payments', label: 'Payments' },
+      { href: '/warden/fees', label: 'Fees', icon: IconReceipt },
+      { href: '/warden/payments', label: 'Payments', icon: IconWallet },
     ],
   },
   {
     label: 'Community',
     items: [
-      { href: '/warden/complaints', label: 'Complaints' },
-      { href: '/warden/notices', label: 'Notices' },
+      { href: '/warden/complaints', label: 'Complaints', icon: IconMessage },
+      { href: '/warden/notices', label: 'Notices', icon: IconMegaphone },
     ],
   },
 ];

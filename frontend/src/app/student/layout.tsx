@@ -13,30 +13,40 @@
  */
 
 import { AppShell, type NavSection } from '@/components/app-shell';
+import {
+  IconAlert,
+  IconBed,
+  IconClipboard,
+  IconDashboard,
+  IconMegaphone,
+  IconMessage,
+  IconReceipt,
+  IconUser,
+} from '@/components/icons';
 import { useRequireRole } from '@/lib/auth';
 
 const SECTIONS: NavSection[] = [
-  { items: [{ href: '/student', label: 'Overview', exact: true }] },
+  { items: [{ href: '/student', label: 'Overview', exact: true, icon: IconDashboard }] },
   {
     label: 'My room',
     items: [
-      { href: '/student/application', label: 'Hostel application' },
-      { href: '/student/profile', label: 'Profile' },
+      { href: '/student/application', label: 'Hostel application', icon: IconBed },
+      { href: '/student/profile', label: 'Profile', icon: IconUser },
     ],
   },
   {
     label: 'My record',
     items: [
-      { href: '/student/attendance', label: 'Attendance' },
-      { href: '/student/alerts', label: 'Absence alerts' },
-      { href: '/student/fees', label: 'Fees' },
+      { href: '/student/attendance', label: 'Attendance', icon: IconClipboard },
+      { href: '/student/alerts', label: 'Absence alerts', icon: IconAlert },
+      { href: '/student/fees', label: 'Fees', icon: IconReceipt },
     ],
   },
   {
     label: 'Hostel',
     items: [
-      { href: '/student/complaints', label: 'Complaints' },
-      { href: '/student/notices', label: 'Notices' },
+      { href: '/student/complaints', label: 'Complaints', icon: IconMessage },
+      { href: '/student/notices', label: 'Notices', icon: IconMegaphone },
     ],
   },
 ];

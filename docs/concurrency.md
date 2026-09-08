@@ -322,14 +322,17 @@ an enum constant, queried a `decided_by_id` column that does not exist (it is `d
 and expected a username where the response carries a display name.
 
 **6.5 A fourth test-side mistake, found by the second run.** `applyingCreatesAPendingApplication`
-asserted `path("decidedAt").isNull()` on a pending application. The app serialises with
-`default-property-inclusion: non_null`, so an undecided application omits `decidedAt`
-altogether rather than sending it as `null` — `path` returns a `MissingNode`, whose `isNull()`
-is `false`. Its sibling in `approvalAllocates` asserted the same predicate was `isFalse()`
-and so passed for the wrong reason: a missing field would have satisfied it just as well as a
-real timestamp, which is the one thing that assertion existed to rule out. Both now use
-`hasNonNull`, which asks whether there is a decision timestamp rather than what Jackson does
-with absent ones.
+asserted `path("decidedAt").isNull()` on a pending application. The app serialised with
+`default-property-inclusion: non_null` at the time, so an undecided application omitted
+`decidedAt` altogether rather than sending it as `null` — `path` returns a `MissingNode`,
+whose `isNull()` is `false`. Its sibling in `approvalAllocates` asserted the same predicate
+was `isFalse()` and so passed for the wrong reason: a missing field would have satisfied it
+just as well as a real timestamp, which is the one thing that assertion existed to rule out.
+Both now use `hasNonNull`, which asks whether there is a decision timestamp rather than what
+Jackson does with absent ones. That inclusion setting is `always` as of 2026-08-31:
+omitting a key the TypeScript contract declares as `T | null` is invisible to `tsc` and
+false to a `=== null` guard, which crashed the student landing page on the next line. Both
+assertions were already written not to care which shape arrives, and neither changed.
 
 **What the second run said.** CI run #4 (2026-08-27) put the same 126 executions through the
 fixed tree and 125 passed. All three production defects are confirmed fixed by a real run,
@@ -347,30 +350,44 @@ lone failure was §6.5, above.
 | Allocation cannot over-fill a room | `AllocationConcurrencyIT` (7 tests) | **Yes — 7/7, CI run #4** |
 | Initiation cannot double-charge | `PaymentCallbackIT` | **Yes — 14/14, CI run #4** |
 | Full-amount settlement is race-safe | `PaymentCallbackIT` | **Yes — same run** |
-| Partial settlement is race-safe | `PaymentCallbackIT` (added 2026-08-27) | **Not yet — next CI run** |
+| Partial settlement is race-safe | `PaymentCallbackIT` (added 2026-08-27) | **Yes — locally, 2026-08-31, and negatively controlled** |
 | Reminders are once per invoice per day | `FeeReminderIdempotencyIT` (9 tests) | **Yes — 9/9, CI run #4** |
 | The absence scan converges | `AbsenceScanIdempotencyIT` (8 tests) | **Yes — 8/8, CI run #4** |
 
 Run #4 rather than run #3 for the first three: run #3 executed against a tree carrying the
 three defects in §6, so run #4 is the first result that describes the code as it then stood.
 
-**The integration suite has executed twice, both times in CI.** It needs Docker for
-Testcontainers and the machine this was built on has none, so
-`.github/workflows/ci.yml` is where these six claims get their only real run. Run #3 put 126
-executions through a real PostgreSQL and 45 failed, reducing to four root causes: three
-production defects and a set of test-side mistakes, all set out in §6. Run #4 re-ran the same
-126 against the fixed tree and 125 passed, the one failure being a fourth test-side mistake
-(§6.5). The 232 unit tests pass alongside them (`mvnw test`, 0 failures, 0 errors, verified
-2026-08-27).
+**The integration suite has now executed three times: twice in CI, then once locally.**
+Run #3 put 126 executions through a real PostgreSQL and 45 failed, reducing to four root
+causes: three production defects and a set of test-side mistakes, all set out in §6. Run #4
+re-ran the same 126 against the fixed tree and 125 passed, the one failure being a fourth
+test-side mistake (§6.5). On 2026-08-31 a Docker daemon became available on the development
+machine, and `mvnw verify` ran the whole tree there: 232 unit tests and 127 integration
+executions, 0 failures and 0 errors, against `postgres:16.4-alpine`. CI is still the gate,
+but it is no longer the only place these claims can be tested.
 
-**The one row that has not run yet is the newest one.** §3's attempt lock landed on
-2026-08-27, after run #4, and it brought
+**The newest row has now run, and it was checked the other way round as well.** §3's
+attempt lock landed on 2026-08-27, after run #4, and it brought
 `concurrentRedeliveriesOfAPartPaymentCreditTheInvoiceOnce` with it — 127 executions now
-rather than 126. That test compiles and its unit-level companions pass, but the claim it
-makes is a claim about a real `SELECT ... FOR UPDATE` under real concurrency, which is
-precisely the kind of thing this document says cannot be believed until a database has run
-it. So it is marked unverified until run #5 says otherwise, and the §3 fix should be read as
-argued-and-compiled rather than proven.
+rather than 126. The local run of 2026-08-31 executed it against a real PostgreSQL and it
+passed.
+
+A green test is weak evidence on its own, and this document says so about §6: run #3 was
+green on the full-amount race while the partial-settlement defect was live, because
+`HostelFee.applyPayment` refuses to overshoot and so protected that case incidentally. The
+new test was therefore negatively controlled. Replacing the locking read in `settle` with the
+unlocked `payments.findById(attempt.id())` — the shape of the code before the fix, invoice
+lock still in place — makes it fail exactly as §3's trace predicts:
+
+```
+[paise credited to invoice 1 by 6 simultaneous callbacks for one 2250000-paise attempt]
+expected: 2250000L
+ but was: 4500000L
+```
+
+Half the invoice credited twice, one 22,500-paise payment settling a 45,000-paise invoice in
+full. Restoring `findByIdForUpdate` returns the class to 15/15. So the assertion is
+load-bearing rather than incidentally true, and the §3 fix is proven rather than argued.
 
 ---
 

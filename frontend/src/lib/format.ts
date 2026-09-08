@@ -189,6 +189,20 @@ export function formatPercent(value: number | null | undefined, fractionDigits =
   return `${value.toFixed(fractionDigits)}%`;
 }
 
+/**
+ * A 0..1 fraction as a percentage.
+ *
+ * `collectionRate` is the one figure the API sends as a fraction -- `FeeCollectionResponse`
+ * fixes that convention on purpose, so the field is never sometimes 0.87 and sometimes 87 --
+ * while `presentPercentage`, `occupancyPercent` and the rest arrive already scaled. Two
+ * conventions need two functions with two names, because the alternative is a caller
+ * guessing which one a field follows and rendering `0.6%` on a term that collected 63%.
+ */
+export function formatFraction(value: number | null | undefined, fractionDigits = 0): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '--';
+  return formatPercent(value * 100, fractionDigits);
+}
+
 // ---------------------------------------------------------------------- labels
 
 /**

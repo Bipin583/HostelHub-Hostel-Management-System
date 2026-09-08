@@ -31,13 +31,21 @@
  * absent from a production build rather than merely hidden. No password is printed:
  * the seeder takes it from `DEV_SEED_PASSWORD` with no fallback, so only whoever
  * started the backend knows it.
+ *
+ * <h2>The right-hand panel is hidden, not stacked, on a phone</h2>
+ *
+ * <p>`BrandPanel` is the half that has to make this look like a product rather than a
+ * form on a white page. It disappears entirely below 900px -- stacking it would push
+ * the password field below the fold, and nobody scrolls past marketing copy to sign in.
+ * Its three claims are limited to ones the code can be shown to honour.
  */
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ApiError } from '@/lib/api-error';
 import { homePathFor, login, useSession } from '@/lib/auth';
-import { Button, ErrorNotice, TextField } from '@/components/ui';
+import { Button, ErrorNotice, Notice, TextField } from '@/components/ui';
+import { IconCheck, IconLogo } from '@/components/icons';
 
 /**
  * `useSearchParams` opts a route into dynamic rendering unless it sits under a
@@ -47,9 +55,12 @@ import { Button, ErrorNotice, TextField } from '@/components/ui';
 export default function LoginPage() {
   return (
     <main className="auth-page">
-      <Suspense fallback={<div className="auth-card" aria-busy="true" />}>
-        <LoginCard />
-      </Suspense>
+      <div className="auth-form-side">
+        <Suspense fallback={<div className="auth-card" aria-busy="true" />}>
+          <LoginCard />
+        </Suspense>
+      </div>
+      <BrandPanel />
     </main>
   );
 }
@@ -106,54 +117,95 @@ function LoginCard() {
   const rateLimited = retryIn > 0;
 
   return (
-    <form className="auth-card" onSubmit={submit}>
+    <div className="auth-card">
       <div className="auth-head">
-        <span className="auth-title">HostelOps</span>
-        <span className="muted small">Sign in to continue</span>
+        <span className="auth-brand">
+          <IconLogo size={22} />
+          HostelOps
+        </span>
+        <h1 className="auth-title">Sign in</h1>
+        <p className="auth-sub">
+          Hostel operations for the whole campus &mdash; applications, beds, attendance and fees
+          behind one account.
+        </p>
       </div>
 
-      <TextField
-        label="Username"
-        value={username}
-        onChange={(event) => setUsername(event.target.value)}
-        autoComplete="username"
-        autoFocus
-        required
-        disabled={submitting}
-      />
+      <form className="auth-form" onSubmit={submit}>
+        <TextField
+          label="Username"
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          autoComplete="username"
+          autoFocus
+          required
+          disabled={submitting}
+        />
 
-      <TextField
-        label="Password"
-        type="password"
-        value={password}
-        onChange={(event) => setPassword(event.target.value)}
-        autoComplete="current-password"
-        required
-        disabled={submitting}
-      />
+        <TextField
+          label="Password"
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          autoComplete="current-password"
+          required
+          disabled={submitting}
+        />
 
-      {rateLimited ? (
-        <div className="notice notice-warning" role="alert">
-          <span className="notice-title">Too many attempts</span>
-          <span>
+        {rateLimited ? (
+          <Notice tone="warning" title="Too many attempts">
             The server is refusing further sign-ins for this account. Try again in {retryIn} second
             {retryIn === 1 ? '' : 's'}.
-          </span>
-        </div>
-      ) : error ? (
-        // Not ErrorNotice's default title: on this page the failure is almost always
-        // "wrong password", and "Something went wrong" implies a fault in the system.
-        <ErrorNotice error={error} title={titleFor(error)} />
-      ) : null}
+          </Notice>
+        ) : error ? (
+          // Not ErrorNotice's default title: on this page the failure is almost always
+          // "wrong password", and "Something went wrong" implies a fault in the system.
+          <ErrorNotice error={error} title={titleFor(error)} />
+        ) : null}
 
-      <Button type="submit" variant="primary" pending={submitting} disabled={rateLimited}>
-        Sign in
-      </Button>
+        <Button type="submit" variant="primary" pending={submitting} disabled={rateLimited}>
+          {rateLimited ? `Locked — ${retryIn}s` : 'Sign in'}
+        </Button>
+      </form>
 
       {process.env.NODE_ENV !== 'production' ? <DevAccountHint /> : null}
-    </form>
+
+      <p className="auth-foot">Your session ends when you close the browser.</p>
+    </div>
   );
 }
+
+/*
+ * The right-hand half. Static, decorative, and hidden below 900px -- see `.auth-brand-side`.
+ *
+ * The three claims are the ones this repository can actually defend: the row lock, the
+ * scoped queries, and the audit aspect. A pitch panel that promises something the code
+ * does not do is worse than no panel, because the first buyer to look finds it out.
+ */
+function BrandPanel() {
+  return (
+    <aside className="auth-brand-side">
+      <div className="auth-brand-inner">
+        <p className="auth-pitch">One record of every bed, every payment, every absence.</p>
+        <div className="auth-points">
+          {PITCH.map((point) => (
+            <div className="auth-point" key={point}>
+              <span className="auth-point-mark" aria-hidden="true">
+                <IconCheck size={13} />
+              </span>
+              <span>{point}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+const PITCH = [
+  'Allocation that cannot double-book a bed, enforced by the database rather than by a check in application code.',
+  'A warden sees one hostel. Scoped at the query, not hidden in the interface.',
+  'Every write recorded with actor, entity and a field-level diff, ready for an audit.',
+];
 
 /** A friendlier heading for the two failures a user can actually act on. */
 function titleFor(error: unknown): string {
@@ -179,17 +231,19 @@ function safeNext(candidate: string | null): string | null {
   return candidate;
 }
 
-/** Compiled out of production builds; see the note at the top of this file. */
+/**
+ * Compiled out of production builds; see the note at the top of this file.
+ *
+ * <p>Styled with `.auth-hint` -- a dashed border and small faint text -- rather than as
+ * an info notice. A notice looks like part of the product, and this is scaffolding.
+ */
 function DevAccountHint() {
   return (
-    <div className="notice notice-info">
-      <span className="notice-title">Development accounts</span>
-      <span className="small">
-        <code className="mono">admin</code>, <code className="mono">lh_warden</code>,{' '}
-        <code className="mono">mh_warden</code>, and students such as{' '}
-        <code className="mono">asha.rao</code> or <code className="mono">arjun.das</code>. All share the
-        password the backend was started with in <code className="mono">DEV_SEED_PASSWORD</code>.
-      </span>
+    <div className="auth-hint">
+      <strong>Development accounts.</strong> <code>admin</code>, <code>lh_warden</code>,{' '}
+      <code>mh_warden</code>, and students such as <code>asha.rao</code> or{' '}
+      <code>arjun.das</code>. All share the password the backend was started with in{' '}
+      <code>DEV_SEED_PASSWORD</code>.
     </div>
   );
 }

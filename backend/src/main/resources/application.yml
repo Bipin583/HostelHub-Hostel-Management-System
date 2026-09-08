@@ -33,7 +33,12 @@ spring:
     validate-on-migrate: true
 
   jackson:
-    default-property-inclusion: non_null
+    # `always`, not `non_null`. types.ts declares every nullable field as `T | null` and
+    # the console guards them with `=== null`, which is false for a key that is absent.
+    # Omitting currentRoom from /student/me therefore crashed the student landing page on
+    # the very next line. A response that says null is the contract the client was written
+    # against; the handful of bytes saved was never worth a shape the types deny.
+    default-property-inclusion: always
     serialization:
       write-dates-as-timestamps: false
 

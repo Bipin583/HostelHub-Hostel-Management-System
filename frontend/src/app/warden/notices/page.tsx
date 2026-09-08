@@ -27,6 +27,7 @@ import { useState } from 'react';
 import { warden } from '@/lib/endpoints';
 import { useCurrentUser } from '@/lib/auth';
 import { useAction, useQuery } from '@/lib/use-query';
+import { toast } from '@/lib/toast';
 import { formatDateTime, genderLabel, hostelLabel, yearLabel } from '@/lib/format';
 import { HOSTELS_IN_SCOPE, type Notice as HostelNotice } from '@/lib/types';
 import {
@@ -156,10 +157,11 @@ export default function WardenNoticesPage() {
       <CreateNoticeDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={() => {
+        onCreated={(title) => {
           setCreateOpen(false);
           setPage(0);
           notices.refetch();
+          toast(`Posted “${title}”`);
         }}
       />
 
@@ -182,6 +184,10 @@ export default function WardenNoticesPage() {
           // payload. `useAction` returns undefined only when the call threw.
           const done = await remove.run(deleteTarget.id);
           if (done !== undefined) {
+            // A toast, not an inline notice. The dialog closes and a row vanishes from
+            // a paged list; there is no figure to read and nothing to follow up, so a
+            // banner that stays until the next navigation would outlive its point.
+            toast(`Deleted “${deleteTarget.title}”`);
             setDeleteTarget(null);
             notices.refetch();
           }
@@ -199,7 +205,8 @@ function CreateNoticeDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  onCreated: () => void;
+  /** Given the posted title, so the caller can name it in its confirmation. */
+  onCreated: (title: string) => void;
 }) {
   const user = useCurrentUser();
   const [title, setTitle] = useState('');
@@ -259,7 +266,9 @@ function CreateNoticeDialog({
                 setGender('');
                 setYear('');
                 setExpiresLocal('');
-                onCreated();
+                // The server's copy of the title, not the local input, which the
+                // resets above have already cleared.
+                onCreated(posted.title);
               }
             }}
           >

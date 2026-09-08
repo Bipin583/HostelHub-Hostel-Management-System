@@ -73,12 +73,12 @@ class ApplicationLifecycleIT extends AbstractPostgresIT {
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
             assertThat(body(response).path("status").asText()).isEqualTo("PENDING");
             assertThat(body(response).path("rollNumber").asText()).isEqualTo(student.rollNumber());
-            // hasNonNull, not path(...).isNull(): the app serialises with
-            // default-property-inclusion=non_null, so an undecided application omits
-            // decidedAt rather than sending it as null. path() then returns a
-            // MissingNode, whose isNull() is false -- isMissingNode() is the true one.
-            // hasNonNull asks the question the lifecycle actually cares about (is there
-            // a decision timestamp at all) and stays right if that setting ever changes.
+            // hasNonNull, not path(...).isNull() or isMissingNode(): whether an undecided
+            // application sends decidedAt as null or omits the key altogether is a
+            // serialisation setting -- default-property-inclusion, `always` since the
+            // absent-key crash on the student landing page -- and this test is not about
+            // that setting. hasNonNull asks the only question the lifecycle cares about,
+            // is there a decision timestamp at all, and is true of both shapes.
             assertThat(body(response).hasNonNull("decidedAt")).isFalse();
             assertThat(allocationStateOf(student.studentId())).isEqualTo(AllocationStatus.PENDING);
         }

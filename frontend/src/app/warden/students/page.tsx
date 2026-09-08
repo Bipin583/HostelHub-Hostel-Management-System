@@ -28,16 +28,18 @@ import { useQuery } from '@/lib/use-query';
 import { genderLabel } from '@/lib/format';
 import { ALLOCATION_STATUSES } from '@/lib/types';
 import {
+  Avatar,
   Card,
   DataState,
   EmptyState,
   enumOptions,
   PageHead,
   Pager,
+  SearchInput,
   SelectField,
   TableWrap,
-  TextField,
 } from '@/components/ui';
+import { IconSearch } from '@/components/icons';
 import { AllocationStatusBadge } from '@/components/status-badges';
 
 const YEAR_OPTIONS = [1, 2, 3, 4, 5].map((year) => ({ value: String(year), label: `Year ${year}` }));
@@ -80,11 +82,14 @@ export default function WardenStudentsPage() {
 
       <Card>
         <div className="filters">
-          <TextField
-            label="Search"
+          {/* The search box carries a glyph and `type="search"`, so a phone keyboard
+              offers the right return key and the browser its own clear button. The
+              debounce above is what makes it safe to bind straight to state. */}
+          <SearchInput
+            label="Search students"
             placeholder="Name or roll number"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={setSearch}
           />
           <SelectField
             label="Year"
@@ -113,7 +118,7 @@ export default function WardenStudentsPage() {
         <DataState query={query} skeletonRows={8} errorTitle="Could not load students">
           {(data) =>
             data.content.length === 0 ? (
-              <EmptyState title="No students match">
+              <EmptyState title="No students match" icon={IconSearch}>
                 Try clearing the filters, or search a different roll number.
               </EmptyState>
             ) : (
@@ -134,9 +139,12 @@ export default function WardenStudentsPage() {
                       <tr key={student.id}>
                         <td className="mono">{student.rollNumber}</td>
                         <td>
-                          <Link href={`/warden/students/${student.id}`} className="cell-strong">
-                            {student.fullName}
-                          </Link>
+                          <span className="row-tight">
+                            <Avatar name={student.fullName} size="sm" />
+                            <Link href={`/warden/students/${student.id}`} className="cell-strong">
+                              {student.fullName}
+                            </Link>
+                          </span>
                         </td>
                         <td className="nums">{student.yearOfStudy}</td>
                         <td>{student.branch ?? '--'}</td>

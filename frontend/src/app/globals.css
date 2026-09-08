@@ -1,82 +1,107 @@
 /*
- * The whole design system: tokens, layout, and the dozen components this console
- * is built from.
+ * The design system: tokens, layout, and every component this console is built from.
  *
  * WHY THIS IS HAND-WRITTEN
  *
  * No Tailwind, no MUI, no shadcn. Two reasons, and neither is nostalgia.
  *
- * First, a component library would answer the interesting questions before they were
- * asked. "How does a warden scan a register of two hundred rows" and "what does an
- * unacknowledged alert look like next to an acknowledged one" are product questions;
- * importing a `<DataGrid>` replaces them with a configuration exercise, and the
- * result looks like every other project that imported the same grid.
+ * First, a component library answers the interesting questions before they are asked.
+ * "How does a warden scan a register of two hundred rows" and "what does an
+ * unacknowledged alert look like beside an acknowledged one" are product questions;
+ * importing a `<DataGrid>` turns them into a configuration exercise, and the result
+ * looks like every other project that imported the same grid.
  *
- * Second, a utility framework moves the styling into the markup. `className="flex
+ * Second, a utility framework moves styling into the markup. `className="flex
  * items-center gap-2 rounded-md border px-3 py-1.5 text-sm"` repeated across forty
- * components is the same duplication a stylesheet exists to remove, and it makes a
- * component's JSX unreadable in a code review -- which is the one thing this project
- * cannot afford, since being read *is* the point.
+ * components is the duplication a stylesheet exists to remove, and it makes a
+ * component unreadable in review -- the one thing this project cannot afford, since
+ * being read is the point.
  *
- * So: custom properties for the values, one class per component, and no build step
- * beyond the one Next already runs.
+ * So: custom properties for the values, one class per component, no build step beyond
+ * the one Next already runs.
  *
  * HOW THE COLOURS WORK
  *
- * Every colour is a token, and no rule below contains a literal hex value. The dark
- * theme then exists entirely as a second block that redefines the same tokens --
- * which is the only reason a dark mode stays correct as pages are added, because a
- * new page cannot forget to handle it. Tokens are semantic (`--surface`, `--border`,
- * `--danger`) rather than descriptive (`--grey-200`): a rule that says `background:
- * var(--surface-raised)` still reads correctly after the palette changes, and one
- * that says `--grey-100` does not.
+ * Every colour is a token and no rule below contains a literal hex value. Dark mode
+ * is therefore a second block that redefines the same tokens, which is the only
+ * reason it stays correct as pages are added: a new page cannot forget to handle it.
+ * Tokens are semantic (`--surface`, `--border`, `--danger`) rather than descriptive
+ * (`--grey-200`), because `background: var(--surface-raised)` still reads correctly
+ * after the palette changes and `--grey-100` does not.
+ *
+ * THEMING IS EXPLICIT, NOT ONLY INFERRED
+ *
+ * `html[data-theme]` wins; `prefers-color-scheme` applies only when the attribute
+ * says `system`. That ordering is what lets a user override the OS without the app
+ * fighting them, and layout.tsx sets the attribute before first paint so there is no
+ * flash of the wrong theme.
  */
 
 /* ------------------------------------------------------------------ tokens */
 
-:root {
+:root,
+html[data-theme='light'] {
   color-scheme: light;
 
-  /* Neutrals. A slight blue cast, because a pure grey next to the accent reads
-     as brown on cheap panels. */
-  --canvas: #f6f7f9;
+  /* Neutrals, with a cool cast. A pure grey beside the indigo accent reads brown on
+     cheap panels, so every step carries a little blue. */
+  --canvas: #f7f8fa;
+  --canvas-deep: #eef0f4;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-sunken: #f0f2f5;
-  --surface-hover: #f2f4f7;
+  --surface-sunken: #f4f6f8;
+  --surface-hover: #f0f2f6;
+  --surface-active: #e8ebf1;
 
-  --border: #dfe3e8;
-  --border-strong: #c4cad2;
+  --border: #e4e7ec;
+  --border-subtle: #eef0f4;
+  --border-strong: #cdd3dc;
+  --border-focus: #a7b0ff;
 
-  --text: #16191d;
-  --text-muted: #5b6470;
-  --text-faint: #868f9b;
+  --text: #0f1419;
+  --text-muted: #576070;
+  --text-faint: #838d9c;
   --text-inverse: #ffffff;
 
-  /* Accent: indigo. Distinct from the semantic colours below at a glance, which
-     matters because "the primary action" and "this is fine" must not look alike. */
-  --accent: #3b4ee0;
-  --accent-hover: #3243c6;
-  --accent-soft: #eaecfd;
-  --accent-text: #2a37a8;
+  /* Accent: indigo, with a violet partner used only for brand gradients. Distinct
+     from the semantic colours at a glance, which matters because "the primary
+     action" and "this is fine" must not look alike. */
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-press: #3730a3;
+  --accent-soft: #eef0fe;
+  --accent-soft-hover: #e2e5fd;
+  --accent-text: #3730a3;
+  --accent-border: #c9cbfb;
+  --accent-2: #7c3aed;
+
+  /* A third hue for data only. Charts need a colour that is neither the primary
+     action nor a status, or every bar looks like it means something. */
+  --viz: #0891b2;
+  --viz-soft: #e0f4f9;
 
   /* Semantic. Each has a solid, a wash for badge backgrounds, and a readable text
-     tone -- a badge needs all three and guessing the third is how contrast breaks. */
-  --success: #17784f;
-  --success-soft: #e3f5ec;
-  --success-text: #0f5c3c;
+     tone -- a badge needs all three, and guessing the third is how contrast breaks. */
+  --success: #067a53;
+  --success-soft: #e4f6ed;
+  --success-border: #b6e2cd;
+  --success-text: #045c3e;
 
-  --warning: #9a6400;
-  --warning-soft: #fdf0d8;
-  --warning-text: #7a4f00;
+  --warning: #9a6206;
+  --warning-soft: #fdf2da;
+  --warning-border: #f0dcaa;
+  --warning-text: #7a4d00;
 
-  --danger: #c02526;
-  --danger-soft: #fdeaea;
-  --danger-text: #93191a;
+  --danger: #c62a2f;
+  --danger-hover: #a92127;
+  --danger-soft: #fdebeb;
+  --danger-border: #f6c9c9;
+  --danger-text: #991b1f;
 
-  --info: #12657f;
-  --info-soft: #e2f2f7;
-  --info-text: #0d4d61;
+  --info: #0e6b86;
+  --info-soft: #e2f3f8;
+  --info-border: #b8dfeb;
+  --info-text: #0b5165;
 
   /* Spacing: a 4px scale. Enough steps to be expressive, few enough that two
      adjacent paddings are never one pixel apart by accident. */
@@ -87,81 +112,128 @@
   --s5: 1.5rem;
   --s6: 2rem;
   --s7: 3rem;
+  --s8: 4.5rem;
 
-  --radius-sm: 4px;
-  --radius: 8px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-md: 10px;
   --radius-lg: 14px;
+  --radius-xl: 20px;
   --radius-pill: 999px;
 
-  /* Two shadows, not five. A raised card and a floating dialog are the only two
-     elevations this app actually has. */
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
-  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.18);
+  /*
+   * Four elevations, each a stack of two shadows: a tight one that reads as a contact
+   * edge and a wide one that reads as distance. A single blurred shadow looks like a
+   * smudge; the pair is what makes a card look like an object.
+   */
+  --shadow-xs: 0 1px 2px rgba(15, 20, 25, 0.05);
+  --shadow: 0 1px 2px rgba(15, 20, 25, 0.04), 0 2px 6px -1px rgba(15, 20, 25, 0.07);
+  --shadow-md: 0 2px 4px rgba(15, 20, 25, 0.04), 0 8px 20px -6px rgba(15, 20, 25, 0.14);
+  --shadow-lg: 0 8px 12px -6px rgba(15, 20, 25, 0.1), 0 24px 48px -12px rgba(15, 20, 25, 0.24);
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    sans-serif;
-  /* Tabular figures for money and ids -- a column of rupees with proportional
-     digits does not line up, and misaligned amounts are genuinely harder to scan. */
-  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Consolas, monospace;
+  /* The focus halo, as one token. Every focusable thing uses it, so the ring cannot
+     drift from control to control. */
+  --ring: 0 0 0 3px rgba(79, 70, 229, 0.22);
+  --ring-danger: 0 0 0 3px rgba(198, 42, 47, 0.2);
 
-  --sidebar-width: 240px;
-  --topbar-height: 56px;
-  --content-max: 1160px;
+  /* The brand gradient. One definition, used by the logo mark, the sign-in panel and
+     nothing else -- a gradient sprinkled across a UI stops reading as a brand. */
+  --brand-gradient: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  /* Tabular figures for money and ids: a column of rupees in proportional digits does
+     not line up, and misaligned amounts are genuinely harder to scan. */
+  --font-mono: var(--font-mono-jetbrains), ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono',
+    Consolas, monospace;
+
+  --sidebar-width: 252px;
+  --topbar-height: 60px;
+  --content-max: 1200px;
+
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --fast: 0.14s;
 }
 
 /*
  * Dark theme.
  *
- * Surfaces get *lighter* as they rise, which is the inverse of the light theme,
- * where they get whiter and shadows do the lifting. Shadows are nearly invisible on
- * a dark background, so elevation has to come from the surface itself.
+ * Surfaces get *lighter* as they rise, the inverse of the light theme where they get
+ * whiter and shadows do the lifting. A shadow is nearly invisible on a dark
+ * background, so elevation has to come from the surface itself.
  *
- * The semantic washes are not the light values darkened. A 10%-opacity red over a
- * near-black background is a muddy brown; these are hand-picked so a danger badge
- * still reads as danger.
+ * The semantic washes are not the light values darkened. A 10%-opacity red over
+ * near-black is a muddy brown; these are picked by hand so a danger badge still reads
+ * as danger.
+ *
+ * One selector, `html[data-theme='dark']`, and no `prefers-color-scheme` block. The
+ * inline script in layout.tsx resolves the user's choice -- explicit light, explicit
+ * dark, or follow the system -- to a concrete `light`/`dark` value before first paint,
+ * so the stylesheet never has to express "dark unless overridden". That is what keeps
+ * this block the single source of every dark value.
  */
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
+html[data-theme='dark'] {
+  color-scheme: dark;
 
-    --canvas: #101215;
-    --surface: #171a1f;
-    --surface-raised: #1e2228;
-    --surface-sunken: #13161a;
-    --surface-hover: #23282f;
+  --canvas: #0b0d11;
+  --canvas-deep: #07080b;
+  --surface: #12151a;
+  --surface-raised: #171b21;
+  --surface-sunken: #0f1216;
+  --surface-hover: #1d222a;
+  --surface-active: #242a33;
 
-    --border: #2b3138;
-    --border-strong: #3c444e;
+  --border: #262c35;
+  --border-subtle: #1e242c;
+  --border-strong: #39414d;
+  --border-focus: #4c53a8;
 
-    --text: #e9ecf1;
-    --text-muted: #a3adba;
-    --text-faint: #7b8592;
-    --text-inverse: #0f1114;
+  --text: #e8ebf0;
+  --text-muted: #9aa4b2;
+  --text-faint: #6f7885;
+  --text-inverse: #0b0d11;
 
-    --accent: #7d8cff;
-    --accent-hover: #929ffe;
-    --accent-soft: #21264a;
-    --accent-text: #b3bcff;
+  --accent: #7c82ff;
+  --accent-hover: #9199ff;
+  --accent-press: #a5abff;
+  --accent-soft: #1b1f3d;
+  --accent-soft-hover: #232849;
+  --accent-text: #b0b6ff;
+  --accent-border: #333a6b;
+  --accent-2: #a97bff;
 
-    --success: #48b98a;
-    --success-soft: #14301f;
-    --success-text: #7fd7ae;
+  --viz: #45b6d4;
+  --viz-soft: #102b34;
 
-    --warning: #dfa63a;
-    --warning-soft: #33260d;
-    --warning-text: #edc478;
+  --success: #3fb98a;
+  --success-soft: #0f2c1f;
+  --success-border: #1e5540;
+  --success-text: #74d5ab;
 
-    --danger: #f0666a;
-    --danger-soft: #38181b;
-    --danger-text: #f7a1a3;
+  --warning: #dda23a;
+  --warning-soft: #2f230c;
+  --warning-border: #5c4519;
+  --warning-text: #ecc178;
 
-    --info: #56b3cc;
-    --info-soft: #122b33;
-    --info-text: #90d3e4;
+  --danger: #f0666a;
+  --danger-hover: #f47d80;
+  --danger-soft: #341518;
+  --danger-border: #632a2d;
+  --danger-text: #f8a2a4;
 
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
-  }
+  --info: #4fb0ca;
+  --info-soft: #10272f;
+  --info-border: #1f4c5a;
+  --info-text: #8ed1e2;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 6px -1px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.4), 0 8px 20px -6px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 8px 12px -6px rgba(0, 0, 0, 0.5), 0 24px 48px -12px rgba(0, 0, 0, 0.7);
+
+  --ring: 0 0 0 3px rgba(124, 130, 255, 0.28);
+  --ring-danger: 0 0 0 3px rgba(240, 102, 106, 0.26);
 }
 
 /* ------------------------------------------------------------------- reset */
@@ -186,6 +258,12 @@ body {
   font-size: 0.9375rem;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Contextual alternates off, tabular figures on for the whole app: every number in
+     this product is either money, a count, or an id, and none of them should shift
+     width between renders. */
+  font-feature-settings: 'cv11', 'ss01';
+  text-rendering: optimizeLegibility;
 }
 
 h1,
@@ -202,18 +280,21 @@ dd {
 
 h1 {
   font-size: 1.5rem;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-weight: 660;
+  letter-spacing: -0.021em;
+  line-height: 1.25;
 }
 
 h2 {
-  font-size: 1.125rem;
-  font-weight: 620;
+  font-size: 1.0625rem;
+  font-weight: 640;
+  letter-spacing: -0.011em;
 }
 
 h3 {
   font-size: 0.9375rem;
-  font-weight: 620;
+  font-weight: 640;
+  letter-spacing: -0.006em;
 }
 
 ul,
@@ -226,10 +307,12 @@ ol {
 a {
   color: var(--accent);
   text-decoration: none;
+  font-weight: 550;
 }
 
 a:hover {
   text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 button,
@@ -240,13 +323,22 @@ textarea {
   color: inherit;
 }
 
+::selection {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+svg {
+  flex: none;
+}
+
 /*
  * One focus ring, defined once, for everything.
  *
- * `:focus-visible` rather than `:focus` so a mouse click on a button does not leave
- * a ring behind, while every keyboard path keeps one. The `outline-offset` is what
- * makes the ring legible on the accent-filled primary button, where a flush outline
- * disappears into the fill.
+ * `:focus-visible` rather than `:focus`, so a mouse click on a button does not leave a
+ * ring behind while every keyboard path keeps one. The offset is what makes the ring
+ * legible on the accent-filled primary button, where a flush outline disappears into
+ * the fill.
  */
 :focus-visible {
   outline: 2px solid var(--accent);
@@ -256,8 +348,8 @@ textarea {
 
 /*
  * Respect a stated preference for less motion. The only animations here are short
- * transitions and one spinner, but "only a spinner" is exactly the sort of thing
- * that triggers vestibular symptoms.
+ * transitions, one spinner and one shimmer -- but "only a spinner" is exactly the sort
+ * of thing that triggers vestibular symptoms.
  */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -266,14 +358,46 @@ textarea {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
+}
+
+/*
+ * Scrollbars, styled only where the platform lets us. A default Windows scrollbar
+ * beside a dark sidebar is a bright grey slab, which is the single most obvious way a
+ * web app looks unfinished on that platform.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-pill);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+  background-clip: padding-box;
 }
 
 /* --------------------------------------------------------------- app shell */
 
 .shell {
   display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -282,35 +406,68 @@ textarea {
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: var(--s5);
-  padding: var(--s4) var(--s3);
+  gap: var(--s4);
+  padding: var(--s4) var(--s3) var(--s3);
   position: sticky;
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 40;
 }
+
+/* ------------------------------------------------------------------- brand */
 
 .brand {
   display: flex;
-  align-items: baseline;
-  gap: var(--s2);
-  padding: var(--s2) var(--s2) 0;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s1) var(--s2) var(--s2);
+  min-width: 0;
+}
+
+/*
+ * The logo mark: a gradient tile with the glyph knocked out of it. A flat monochrome
+ * square would be honest and forgettable; the gradient is the one place in this
+ * interface where decoration is the job.
+ */
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius);
+  background: var(--brand-gradient);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  flex: none;
+  box-shadow: var(--shadow-xs), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
 }
 
 .brand-name {
-  font-size: 1.0625rem;
+  font-size: 1rem;
   font-weight: 680;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.022em;
   color: var(--text);
+  white-space: nowrap;
 }
 
 .brand-scope {
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: 620;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   color: var(--text-faint);
+  white-space: nowrap;
 }
+
+/* --------------------------------------------------------------------- nav */
 
 .nav {
   display: flex;
@@ -318,25 +475,32 @@ textarea {
   gap: 2px;
 }
 
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .nav-group-label {
   font-size: 0.6875rem;
-  font-weight: 650;
+  font-weight: 660;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   color: var(--text-faint);
   padding: var(--s3) var(--s2) var(--s1);
 }
 
 .nav-link {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--s2);
+  gap: var(--s3);
   padding: var(--s2) var(--s3);
   border-radius: var(--radius);
   color: var(--text-muted);
-  font-weight: 500;
-  transition: background 0.12s ease, color 0.12s ease;
+  font-size: 0.875rem;
+  font-weight: 520;
+  transition: background var(--fast) ease, color var(--fast) ease;
 }
 
 .nav-link:hover {
@@ -345,10 +509,27 @@ textarea {
   text-decoration: none;
 }
 
+.nav-link-icon {
+  color: var(--text-faint);
+  transition: color var(--fast) ease;
+}
+
+.nav-link:hover .nav-link-icon {
+  color: var(--text-muted);
+}
+
+.nav-link-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /*
- * The active link is marked by weight and colour, not only by background. A
- * background-only cue vanishes for anyone with a low-contrast display or a
- * forced-colours mode.
+ * The active link is marked three ways: background, colour, and a bar in the gutter.
+ * A background-only cue disappears on a low-contrast display and in forced-colours
+ * mode, where the bar survives as a real border.
  */
 .nav-link[aria-current='page'] {
   background: var(--accent-soft);
@@ -356,29 +537,85 @@ textarea {
   font-weight: 620;
 }
 
+.nav-link[aria-current='page'] .nav-link-icon {
+  color: var(--accent);
+}
+
+.nav-link[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--s3));
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+  background: var(--accent);
+}
+
 .nav-count {
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
   color: var(--text-faint);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-pill);
+  padding: 1px var(--s2);
+  min-width: 1.5rem;
+  text-align: center;
 }
+
+/* ---------------------------------------------------------- sidebar footer */
 
 .sidebar-footer {
   margin-top: auto;
-  border-top: 1px solid var(--border);
-  padding: var(--s3) var(--s2) 0;
+  padding-top: var(--s3);
   display: flex;
   flex-direction: column;
   gap: var(--s2);
 }
 
+/*
+ * The user card is a button, because it opens a menu. It looks like a card and
+ * behaves like a disclosure -- so it gets the whole treatment: hover, expanded state,
+ * and an `aria-expanded` the menu is wired to.
+ */
 .who {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  padding: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  transition: background var(--fast) ease, border-color var(--fast) ease;
+}
+
+.who:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.who[aria-expanded='true'] {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.who-text {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  flex: 1;
+  line-height: 1.3;
 }
 
 .who-name {
-  font-weight: 600;
+  font-size: 0.875rem;
+  font-weight: 620;
+  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -387,66 +624,357 @@ textarea {
 .who-role {
   font-size: 0.75rem;
   color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
+/* The initials disc, on the brand gradient rather than a hue derived from the name.
+   This is a single-institution product: the avatars belong to the same organisation, and
+   a rainbow of generated colours would read as decoration. The initials do the
+   identifying -- see `initials` in app-shell.tsx. */
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  display: grid;
+  place-items: center;
+  flex: none;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  background: var(--brand-gradient);
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.avatar-sm {
+  width: 26px;
+  height: 26px;
+  font-size: 0.6875rem;
+}
+
+.avatar-lg {
+  width: 44px;
+  height: 44px;
+  font-size: 0.9375rem;
+}
+
+/* ------------------------------------------------------------------- menus */
+
+/*
+ * A popover menu, positioned by its wrapper rather than by a portal. Every menu in
+ * this app is anchored to the thing that opened it and none of them needs to escape a
+ * clipping ancestor, so `position: absolute` is correct and a portal would only add a
+ * focus-restoration problem to solve.
+ */
+.menu-anchor {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  z-index: 60;
+  min-width: 220px;
+  padding: var(--s1);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  animation: pop 0.14s var(--ease);
+}
+
+.menu-up {
+  bottom: calc(100% + var(--s2));
+  left: 0;
+  right: 0;
+}
+
+.menu-down-right {
+  top: calc(100% + var(--s2));
+  right: 0;
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 520;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background var(--fast) ease;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--surface-hover);
+  text-decoration: none;
+}
+
+.menu-item-danger {
+  color: var(--danger-text);
+}
+
+.menu-item-danger:hover {
+  background: var(--danger-soft);
+}
+
+.menu-label {
+  padding: var(--s2) var(--s3) var(--s1);
+  font-size: 0.6875rem;
+  font-weight: 660;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-faint);
+}
+
+.menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: var(--s1) 0;
+}
+
+/* ----------------------------------------------------------------- top bar */
 
 .main {
   display: flex;
   flex-direction: column;
-  min-width: 0; /* Without this, a wide table stretches the grid column instead of scrolling. */
+  min-width: 0; /* Without this a wide table stretches the grid column instead of scrolling. */
 }
 
+/*
+ * The top bar is translucent and blurred, so content scrolling under it stays faintly
+ * visible instead of vanishing at a hard edge. `backdrop-filter` degrades to the flat
+ * fallback colour where it is unsupported, which is why the background is a solid
+ * colour first and a translucent one second.
+ */
 .topbar {
   height: var(--topbar-height);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--s4);
+  gap: var(--s3);
   padding: 0 var(--s5);
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: 30;
 }
 
+@supports (backdrop-filter: blur(1px)) {
+  .topbar {
+    background: color-mix(in srgb, var(--surface) 78%, transparent);
+    backdrop-filter: blur(12px) saturate(1.4);
+  }
+}
+
+.topbar-title {
+  font-size: 0.9375rem;
+  font-weight: 640;
+  letter-spacing: -0.008em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-left: auto;
+}
+
+/*
+ * The command trigger. It is a button that looks like a search field, because that is
+ * what users reach for -- but it opens a palette rather than accepting text inline,
+ * and a real input here would promise filtering it does not do.
+ */
+.cmd-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 200px;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  color: var(--text-faint);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: border-color var(--fast) ease, background var(--fast) ease;
+}
+
+.cmd-trigger:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.cmd-trigger-label {
+  flex: 1;
+  text-align: left;
+}
+
+/* A keyboard hint, styled as a key. Two of them side by side read as a chord. */
+.kbd {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 620;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-faint);
+  box-shadow: 0 1px 0 var(--border);
+  white-space: nowrap;
+}
+
+/* An icon-only square button, for the top bar's controls. */
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--fast) ease, color var(--fast) ease, border-color var(--fast) ease;
+}
+
+.icon-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+/* A tighter one, for a dismiss control that sits inside another surface -- a toast, a
+   dialog header -- where the 34px target would dominate the thing it closes. Still
+   comfortably past the 24px minimum for a control that is not the primary action. */
+.icon-btn-sm {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-xs);
+}
+
+/* Only visible below the sidebar breakpoint; see the media query at the end of this
+   section. */
+.nav-toggle {
+  display: none;
+}
+
+/* --------------------------------------------------------------- content */
+
 .content {
-  padding: var(--s5);
+  padding: var(--s5) var(--s5) var(--s7);
   width: 100%;
   max-width: var(--content-max);
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: var(--s5);
+  animation: rise 0.24s var(--ease);
 }
 
+/* A short, small rise on route change. Long enough to read as a transition, short
+   enough that a warden clicking through five pages never waits for it. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ----------------------------------------------------- sidebar as a drawer */
+
 /*
- * Below 900px the sidebar becomes a horizontal strip above the content. A drawer
- * with a hamburger would be more fashionable and would also hide the navigation
- * behind a tap on the screens where orientation matters most.
+ * Below 960px the sidebar slides in over the content instead of sitting beside it.
+ *
+ * The previous version turned it into a horizontal strip of links above the page,
+ * which avoided a hamburger but cost two lines of vertical space on exactly the
+ * screens that have least, and wrapped fifteen warden links into an unreadable block.
+ * A drawer with a real overlay, Escape to close, and a focus-visible toggle is the
+ * honest answer.
  */
-@media (max-width: 900px) {
+@media (max-width: 960px) {
   .shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .sidebar {
-    position: static;
-    height: auto;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(300px, 86vw);
+    transform: translateX(-102%);
+    transition: transform 0.24s var(--ease);
+    box-shadow: var(--shadow-lg);
+    z-index: 70;
   }
 
-  .nav {
-    flex-direction: row;
-    flex-wrap: wrap;
+  .sidebar[data-open='true'] {
+    transform: none;
   }
 
-  .nav-group-label {
-    display: none;
+  .nav-toggle {
+    display: grid;
+  }
+
+  .scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 8, 12, 0.5);
+    z-index: 60;
+    animation: fade 0.18s ease;
   }
 
   .content {
-    padding: var(--s4);
+    padding: var(--s4) var(--s4) var(--s6);
+  }
+
+  .cmd-trigger {
+    min-width: 0;
+  }
+
+  .cmd-trigger-label,
+  .cmd-trigger .kbd {
+    display: none;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
@@ -464,12 +992,30 @@ textarea {
   color: var(--text-muted);
   font-size: 0.875rem;
   margin-top: var(--s1);
+  max-width: 68ch;
 }
 
 .crumb {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
   font-size: 0.8125rem;
+  font-weight: 520;
   color: var(--text-faint);
   margin-bottom: var(--s1);
+}
+
+.crumb a {
+  color: var(--text-muted);
+  font-weight: 520;
+}
+
+/* A rule between a page's header and its body, on pages dense enough to need one. */
+.divider {
+  height: 1px;
+  background: var(--border);
+  border: none;
+  margin: 0;
 }
 
 /* ------------------------------------------------------------------- cards */
@@ -478,16 +1024,61 @@ textarea {
   background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
+/*
+ * The head of a card: an optional glyph, the title and subtitle, and optional actions.
+ *
+ * It wraps, and the wrapping is doing real work. `.card-head-text` carries a
+ * flex-basis rather than just `flex: 1`, so once the free space drops below it the
+ * actions fall to a second row instead of compressing the heading into two words per
+ * line. That is the whole reason there is no media query here -- the head breaks when
+ * it runs out of room, which is a property of the card, not of the viewport. A card
+ * in a two-column grid on a desktop hits the same wall as a full-width card on a
+ * phone, and only one of those is something a breakpoint could see.
+ */
 .card-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--s3);
   padding: var(--s4) var(--s5);
   border-bottom: 1px solid var(--border);
+}
+
+.card-head-text {
+  flex: 1 1 260px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--s3);
+  row-gap: 2px;
+  min-width: 0;
+}
+
+/* The subtitle sits beside the title while there is room to read both, and drops under
+   it when there is not. Without a basis of its own it would never wrap -- flex is
+   happy to shrink text to its longest word -- and a heading reduced to that stops
+   reading as a heading. */
+.card-head-text > p {
+  flex: 1 1 22ch;
+  min-width: 0;
+}
+
+/* The tinted glyph tile beside a card title. Small, quiet, and the fastest way to
+   tell four stacked cards apart at a glance. */
+.card-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .card-body {
@@ -505,6 +1096,8 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: var(--s3);
+  background: var(--surface-sunken);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
 /* A card whose body is a table: the table draws its own edges. */
@@ -512,38 +1105,128 @@ textarea {
   padding: 0;
 }
 
+/*
+ * The head of a queue inside a card -- five open alerts, three recent payments.
+ *
+ * Hairlines between rows rather than around each one: these are one list, and boxing
+ * every entry turns five items into five competing objects. The last separator is
+ * removed rather than the first added, so a one-row list has no stray line under it.
+ */
+.card-list {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+}
+
+.card-list > li {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.card-list > li:first-child {
+  padding-top: 0;
+}
+
+.card-list > li:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+/* The middle of a row: takes the slack so the badge on the right stays right, and
+   truncates rather than wrapping a long name into a second line that shifts the row. */
+.card-list-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.card-list-main > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* -------------------------------------------------------------- stat tiles */
 
+/*
+ * 168px, not 210px. At 210 a 414px-wide phone fits exactly one column, so four KPIs
+ * became four full-width slabs and the first screen of the dashboard held nothing but
+ * them. At 168 the same phone fits two and the whole set is visible at once, while a
+ * 320px screen still collapses to one -- which is the point of auto-fit over a
+ * breakpoint: the number of columns follows the space, and `1fr` keeps them equal
+ * whatever that number turns out to be.
+ */
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
   gap: var(--s4);
 }
 
 .stat {
+  position: relative;
   background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--s4) var(--s5);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-xs);
   display: flex;
   flex-direction: column;
   gap: var(--s1);
+  overflow: hidden;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s var(--ease);
+}
+
+/* A hairline of accent along the top edge. One pixel of colour is enough to make a row
+   of tiles read as a set rather than as four unrelated boxes. */
+.stat::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--brand-gradient);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.stat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
 }
 
 .stat-label {
   font-size: 0.75rem;
-  font-weight: 620;
+  font-weight: 640;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  line-height: 1.35;
   color: var(--text-faint);
 }
 
+.stat-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  transition: background var(--fast) ease, color var(--fast) ease;
+}
+
 .stat-value {
-  font-size: 1.75rem;
-  font-weight: 660;
-  letter-spacing: -0.02em;
+  font-size: 1.875rem;
+  font-weight: 680;
+  letter-spacing: -0.028em;
   font-variant-numeric: tabular-nums;
+  line-height: 1.15;
 }
 
 .stat-note {
@@ -551,98 +1234,157 @@ textarea {
   color: var(--text-muted);
 }
 
-/* A tile that is a link to the thing it counts. */
+/* A tile that links to the thing it counts. Lifts on hover, which is the only cue that
+   distinguishes it from the tiles that do not. */
 a.stat:hover {
   border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
   text-decoration: none;
+}
+
+a.stat:hover::after {
+  opacity: 1;
+}
+
+a.stat:hover .stat-icon {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* A delta beside a figure: up is not automatically good, so the tone is the caller's
+   decision rather than the sign's. */
+.trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.75rem;
+  font-weight: 640;
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-up {
+  color: var(--success-text);
+}
+
+.trend-down {
+  color: var(--danger-text);
+}
+
+.trend-flat {
+  color: var(--text-faint);
 }
 
 /* ------------------------------------------------------------------ tables */
 
-/*
- * The wrapper scrolls, not the page.
- *
- * The attendance register and the audit log are genuinely wide. Letting the document
- * scroll sideways moves the navigation off screen with it; confining the overflow
- * here keeps the shell fixed and the horizontal scrollbar attached to the data it
- * belongs to.
- */
+/* The horizontal scroller. A table with eight columns does not fit a phone, and the
+   honest answer is to let it scroll rather than to hide columns the user came for.
+   The rounded border lives here so the corners clip the header's background. */
 .table-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   overflow-x: auto;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-xs);
+  -webkit-overflow-scrolling: touch;
 }
 
-table.table {
+.table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.875rem;
 }
 
 .table thead th {
-  text-align: left;
-  font-size: 0.75rem;
-  font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-faint);
-  padding: var(--s3) var(--s4);
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-sunken);
-  white-space: nowrap;
   position: sticky;
   top: 0;
   z-index: 1;
+  background: var(--surface-sunken);
+  padding: var(--s3) var(--s4);
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 680;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
 }
 
 .table tbody td {
   padding: var(--s3) var(--s4);
-  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border-subtle);
   vertical-align: middle;
+  color: var(--text);
 }
 
-.table tbody tr:last-child td {
-  border-bottom: none;
+.table tbody tr:first-child td {
+  border-top: none;
 }
 
-.table tbody tr:hover {
-  background: var(--surface-hover);
+/* Hover on rows only, not on the header, and only where a pointer exists -- on a
+   touch screen the highlight sticks after a tap and looks like a selection. */
+@media (hover: hover) {
+  .table tbody tr:hover td {
+    background: var(--surface-hover);
+  }
 }
 
-/* Numbers right-aligned and tabular, so a column of amounts can be compared by eye. */
-.table .num {
+.table tfoot td {
+  padding: var(--s3) var(--s4);
+  border-top: 1px solid var(--border);
+  background: var(--surface-sunken);
+  font-weight: 600;
+}
+
+/* The primary identifier in a row -- a name, an invoice number. Everything else in the
+   row is context for this one cell, so it is the one that gets the weight. */
+.cell-strong {
+  font-weight: 620;
+  color: var(--text);
+}
+
+/* The second line under it: a roll number, an email, a room. */
+.cell-sub {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  margin-top: 1px;
+}
+
+/* Figures right-align and share a width per digit, so a column of amounts can be
+   scanned down for magnitude instead of read one by one. */
+.num,
+.nums {
   text-align: right;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.table .shrink {
+.nowrap {
+  white-space: nowrap;
+}
+
+.shrink {
   width: 1%;
   white-space: nowrap;
 }
 
-.cell-strong {
-  font-weight: 600;
-}
+/* ------------------------------------------------------- badges and signals */
 
-.cell-sub {
-  display: block;
-  font-size: 0.8125rem;
-  color: var(--text-faint);
-}
-
-.mono {
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-}
-
-/* ------------------------------------------------------------------ badges */
-
+/* A status pill. Every badge carries its own text, so the colour is a second signal
+   and never the only one -- a monochrome print or a red/green colour blindness still
+   leaves the status readable. */
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: var(--s1);
-  padding: 2px var(--s2);
+  gap: 5px;
+  padding: 2px 9px;
   border-radius: var(--radius-pill);
   font-size: 0.75rem;
   font-weight: 620;
+  line-height: 1.5;
   white-space: nowrap;
   border: 1px solid transparent;
 }
@@ -653,55 +1395,88 @@ table.table {
   border-color: var(--border);
 }
 
+.badge-info {
+  background: var(--info-soft);
+  color: var(--info-text);
+  border-color: var(--info-border);
+}
+
 .badge-success {
   background: var(--success-soft);
   color: var(--success-text);
+  border-color: var(--success-border);
 }
 
 .badge-warning {
   background: var(--warning-soft);
   color: var(--warning-text);
+  border-color: var(--warning-border);
 }
 
 .badge-danger {
   background: var(--danger-soft);
   color: var(--danger-text);
-}
-
-.badge-info {
-  background: var(--info-soft);
-  color: var(--info-text);
+  border-color: var(--danger-border);
 }
 
 .badge-accent {
   background: var(--accent-soft);
   color: var(--accent-text);
+  border-color: var(--accent-border);
 }
 
-/* A dot for urgency, where the colour is the whole message and a word would repeat
-   the adjacent column. */
+/* The dot inside a badge, and the standalone urgency dot. aria-hidden at every call
+   site: it repeats what the adjacent word already says. */
 .dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  display: inline-block;
   flex: none;
+  background: currentColor;
 }
 
 .dot-low {
-  background: var(--text-faint);
+  color: var(--text-faint);
 }
 
-.dot-medium {
-  background: var(--info);
+.dot-normal {
+  color: var(--info-text);
 }
 
 .dot-high {
-  background: var(--warning);
+  color: var(--warning-text);
 }
 
-.dot-critical {
-  background: var(--danger);
+.dot-urgent {
+  color: var(--danger-text);
+}
+
+/* Urgent is the one state worth animating. The ring pulses rather than the dot, so
+   nothing moves position and the layout stays still. */
+.dot-urgent {
+  position: relative;
+}
+
+.dot-urgent::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  opacity: 0;
+  animation: pulse 2.2s var(--ease) infinite;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.65);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.15);
+  }
 }
 
 /* ----------------------------------------------------------------- buttons */
@@ -710,32 +1485,48 @@ table.table {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--s2);
-  padding: var(--s2) var(--s4);
-  border-radius: var(--radius);
+  gap: 7px;
+  padding: 0 var(--s4);
+  height: 36px;
   border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   background: var(--surface-raised);
   color: var(--text);
+  font-family: inherit;
   font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
+  font-weight: 560;
+  line-height: 1;
   white-space: nowrap;
-  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+  transition: background var(--fast) ease, border-color var(--fast) ease,
+    box-shadow var(--fast) ease, transform var(--fast) var(--ease), opacity var(--fast) ease;
 }
 
 .btn:hover:not(:disabled) {
   background: var(--surface-hover);
+  border-color: var(--text-faint);
+}
+
+/* A press moves the button one pixel. It is the smallest possible confirmation that
+   the click landed, and it costs nothing on a slow connection -- unlike a spinner,
+   which cannot appear until the request has already gone out. */
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: none;
 }
 
 .btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--text-inverse);
+  color: #fff;
+  box-shadow: var(--shadow-xs), inset 0 1px 0 rgb(255 255 255 / 0.14);
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -743,68 +1534,57 @@ table.table {
   border-color: var(--accent-hover);
 }
 
-/*
- * Destructive actions are outlined, not filled.
- *
- * A solid red button is the most visually dominant thing on a page, which is exactly
- * wrong for "vacate this room" sitting next to "save". The colour carries the
- * warning; the weight is left to the primary action.
- */
 .btn-danger {
+  background: var(--danger);
   border-color: var(--danger);
-  color: var(--danger);
-  background: var(--surface-raised);
+  color: #fff;
+  box-shadow: var(--shadow-xs), inset 0 1px 0 rgb(255 255 255 / 0.14);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: var(--danger-soft);
+  background: var(--danger-hover);
+  border-color: var(--danger-hover);
+}
+
+.btn-danger:focus-visible {
+  outline-color: var(--ring-danger);
 }
 
 .btn-ghost {
-  border-color: transparent;
   background: transparent;
+  border-color: transparent;
+  box-shadow: none;
   color: var(--text-muted);
 }
 
 .btn-ghost:hover:not(:disabled) {
   background: var(--surface-hover);
+  border-color: transparent;
   color: var(--text);
 }
 
 .btn-sm {
-  padding: var(--s1) var(--s2);
+  height: 30px;
+  padding: 0 var(--s3);
   font-size: 0.8125rem;
 }
 
+/* A button that has to read as a link, because it sits in a sentence. Kept a real
+   <button> so the keyboard and the screen reader both get a control, not a fake one. */
 .btn-link {
   border: none;
   background: none;
+  box-shadow: none;
   padding: 0;
-  color: var(--accent);
-  font-weight: 600;
+  height: auto;
+  color: var(--accent-text);
+  font-weight: 560;
   cursor: pointer;
 }
 
 .btn-link:hover {
   text-decoration: underline;
-}
-
-/* The pending state on a submit: a ring, not a replaced label, so the button does
-   not change width mid-click and the text stays readable. */
-.spinner {
-  width: 0.875em;
-  height: 0.875em;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-  flex: none;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  text-underline-offset: 2px;
 }
 
 /* ------------------------------------------------------------------- forms */
@@ -812,14 +1592,21 @@ table.table {
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--s1);
+  gap: 6px;
   min-width: 0;
 }
 
 .field-label {
   font-size: 0.8125rem;
-  font-weight: 620;
-  color: var(--text-muted);
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* The required marker. A colour alone would not survive a monochrome print, so it is
+   an asterisk that happens to be coloured. */
+.field-label .req {
+  color: var(--danger-text);
+  margin-left: 2px;
 }
 
 .field-hint {
@@ -827,16 +1614,14 @@ table.table {
   color: var(--text-faint);
 }
 
-/*
- * A field error is text, not a red border alone.
- *
- * Colour by itself excludes anyone who cannot distinguish it, and `aria-describedby`
- * needs something to point at. The border still turns red as a second, redundant
- * cue -- which is the rule for every state in this file.
- */
+/* The validation message. role="alert" at the call site announces it; the icon and the
+   colour are for everyone else. */
 .field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 560;
   color: var(--danger-text);
 }
 
@@ -844,17 +1629,35 @@ table.table {
 .select,
 .textarea {
   width: 100%;
-  padding: var(--s2) var(--s3);
+  padding: 0 var(--s3);
+  height: 36px;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  background: var(--surface);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
   color: var(--text);
+  font-family: inherit;
   font-size: 0.875rem;
+  transition: border-color var(--fast) ease, box-shadow var(--fast) ease,
+    background var(--fast) ease;
 }
 
 .textarea {
-  min-height: 6.5rem;
+  height: auto;
+  min-height: 92px;
+  padding: var(--s3);
+  line-height: 1.55;
   resize: vertical;
+}
+
+/* A focused input gets a soft inner halo as well as the shared ring, because an input
+   is the one control where "which field am I in" needs answering at a glance across a
+   ten-field form. */
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
 }
 
 .input::placeholder,
@@ -866,7 +1669,7 @@ table.table {
 .select:disabled,
 .textarea:disabled {
   background: var(--surface-sunken);
-  color: var(--text-muted);
+  color: var(--text-faint);
   cursor: not-allowed;
 }
 
@@ -876,129 +1679,281 @@ table.table {
   border-color: var(--danger);
 }
 
+.input[aria-invalid='true']:focus,
+.select[aria-invalid='true']:focus,
+.textarea[aria-invalid='true']:focus {
+  box-shadow: 0 0 0 3px var(--ring-danger);
+}
+
+/* The native arrow is replaced with one drawn here, because the platform arrows differ
+   enough between Chrome, Safari and Firefox to make a row of selects look ragged. */
+.select {
+  appearance: none;
+  padding-right: var(--s7);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--s3) center;
+}
+
+/* A form laid out in two columns on a wide screen and one on a narrow one. auto-fit
+   rather than a breakpoint, so it reflows on a resized desktop window too. */
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: var(--s4);
 }
 
-.form-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  flex-wrap: wrap;
+/* A field that wants the whole row -- a textarea, an address. */
+.form-grid .span-2 {
+  grid-column: 1 / -1;
 }
 
-/* A row of filters above a table. Wraps rather than compressing the controls. */
+/* The filter bar above a table. Wraps rather than scrolls, because a hidden filter is
+   a filter nobody applies. */
 .filters {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--s3);
-  flex-wrap: wrap;
 }
 
 .filters .field {
-  min-width: 150px;
+  min-width: 168px;
+  flex: 1 1 168px;
+}
+
+/* A search input with room for the glyph. The icon is positioned by the wrapper so the
+   input keeps its own focus ring undisturbed. */
+.search {
+  position: relative;
+  flex: 1 1 240px;
+  min-width: 200px;
+}
+
+.search .input {
+  padding-left: var(--s7);
+}
+
+.search-icon {
+  position: absolute;
+  left: var(--s3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-faint);
+  pointer-events: none;
+  display: flex;
+}
+
+/* A segmented control -- the tab-like row for switching a table between two or three
+   fixed views. A real radio group underneath, so arrow keys work. */
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.segmented button {
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 560;
+  color: var(--text-muted);
+  padding: 5px var(--s3);
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--fast) ease, color var(--fast) ease;
+}
+
+.segmented button:hover {
+  color: var(--text);
+}
+
+/* aria-pressed is the accessible state and the styling hook at once, so a new segment
+   cannot be styled active without also announcing itself. */
+.segmented button[aria-pressed='true'] {
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: var(--shadow-xs);
 }
 
 /* ----------------------------------------------------------------- notices */
 
+/* An inline message block. The left bar carries the tone so the body text stays on the
+   normal surface and remains readable at length -- a fully tinted panel with three
+   sentences in it is hard work. */
 .notice {
+  display: flex;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
   border: 1px solid var(--border);
   border-left-width: 3px;
-  border-radius: var(--radius);
-  padding: var(--s3) var(--s4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--s1);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
   font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.notice-icon {
+  flex: none;
+  display: flex;
+  padding-top: 1px;
+}
+
+.notice-body {
+  min-width: 0;
+  flex: 1;
 }
 
 .notice-title {
-  font-weight: 650;
+  font-weight: 640;
+  margin-bottom: 2px;
 }
 
-.notice-error {
-  background: var(--danger-soft);
-  border-left-color: var(--danger);
-  color: var(--danger-text);
+.notice-info {
+  border-left-color: var(--info);
+  background: var(--info-soft);
+  border-color: var(--info-border);
+  border-left-color: var(--info);
 }
 
-.notice-warning {
-  background: var(--warning-soft);
-  border-left-color: var(--warning);
-  color: var(--warning-text);
+.notice-info .notice-icon {
+  color: var(--info-text);
 }
 
 .notice-success {
   background: var(--success-soft);
+  border-color: var(--success-border);
   border-left-color: var(--success);
+}
+
+.notice-success .notice-icon {
   color: var(--success-text);
 }
 
-.notice-info {
-  background: var(--info-soft);
-  border-left-color: var(--info);
-  color: var(--info-text);
+.notice-warning {
+  background: var(--warning-soft);
+  border-color: var(--warning-border);
+  border-left-color: var(--warning);
 }
 
-/* The trace id on an error, small and monospaced: it is for pasting into a log
-   search, not for reading. */
+.notice-warning .notice-icon {
+  color: var(--warning-text);
+}
+
+.notice-error {
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+  border-left-color: var(--danger);
+}
+
+.notice-error .notice-icon {
+  color: var(--danger-text);
+}
+
+/* The correlation id the API returns with an error. Kept selectable and monospaced --
+   its whole purpose is to be copied into a bug report or grepped out of a log. */
 .notice-trace {
+  display: block;
+  margin-top: 5px;
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  opacity: 0.8;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  user-select: all;
+  word-break: break-all;
 }
 
-/* --------------------------------------------------- empty and loading states */
+/* ------------------------------------------------ empty, loading, and pager */
 
+/* The empty state. It gets a glyph, a heading, a sentence and usually an action,
+   because "no results" with nothing else is indistinguishable from a broken page. */
+/* Padding is --s6, not --s8. Every empty state in this app renders inside a card body,
+   where 4.5rem top and bottom left an eighth of a dashboard screen holding one short
+   sentence. Airy is good; a card that looks like it failed to load is not. */
 .empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--s2);
-  padding: var(--s7) var(--s5);
   text-align: center;
+  gap: var(--s2);
+  padding: var(--s6) var(--s5);
   color: var(--text-muted);
 }
 
+.empty-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  display: grid;
+  place-items: center;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+  margin-bottom: var(--s1);
+}
+
 .empty-title {
-  font-weight: 620;
+  font-size: 0.9375rem;
+  font-weight: 640;
   color: var(--text);
 }
 
-/*
- * Skeletons rather than a centred spinner.
- *
- * A spinner discards the layout and then throws it back, which on a table-heavy
- * page is a visible jump on every navigation. Placeholder rows of roughly the right
- * shape keep the page still.
- */
+.empty p {
+  font-size: 0.875rem;
+  max-width: 44ch;
+}
+
+/* A grey block standing in for content that has not arrived. Sized by the caller, so a
+   skeleton row can match the shape of the row it will become and the page does not
+   jump when the data lands. */
 .skeleton {
-  background: linear-gradient(90deg, var(--surface-sunken), var(--surface-hover), var(--surface-sunken));
-  background-size: 200% 100%;
-  animation: shimmer 1.3s ease-in-out infinite;
-  border-radius: var(--radius-sm);
-  height: 0.875rem;
+  background: linear-gradient(
+    90deg,
+    var(--surface-sunken) 25%,
+    var(--surface-hover) 37%,
+    var(--surface-sunken) 63%
+  );
+  background-size: 400% 100%;
+  border-radius: var(--radius-xs);
+  animation: shimmer 1.4s ease-in-out infinite;
 }
 
 @keyframes shimmer {
   0% {
-    background-position: 200% 0;
+    background-position: 100% 50%;
   }
   100% {
-    background-position: -200% 0;
+    background-position: 0 50%;
   }
 }
 
 .skeleton-stack {
   display: flex;
   flex-direction: column;
-  gap: var(--s3);
-  padding: var(--s4);
+  gap: var(--s2);
 }
 
-/* ---------------------------------------------------------------- pagination */
+/* The in-button spinner. currentColor, so it is white on a primary button and grey on a
+   default one without either being stated twice. */
+.spinner {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
 
 .pager {
   display: flex;
@@ -1008,6 +1963,7 @@ table.table {
   flex-wrap: wrap;
   font-size: 0.8125rem;
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .pager-buttons {
@@ -1016,80 +1972,149 @@ table.table {
   gap: var(--s2);
 }
 
-/* --------------------------------------------------------------- dialogs */
+/* ----------------------------------------------------------------- dialogs */
 
 /*
- * Built on `<dialog>`, so focus trapping, Escape, and the top layer come from the
- * platform instead of from a hand-rolled portal plus keydown handler.
+ * Built on the native `<dialog>`, so focus trapping, Escape, the top layer and the
+ * inert background come from the platform rather than from a hand-rolled modal that
+ * gets one of the four wrong.
  */
 dialog.dialog {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface-raised);
   color: var(--text);
-  box-shadow: var(--shadow-lg);
   padding: 0;
   width: min(520px, calc(100vw - 2rem));
-  max-height: calc(100vh - 4rem);
-  overflow: auto;
+  max-height: min(84vh, 720px);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
 }
 
+dialog.dialog[open] {
+  animation: dialog-in 0.2s var(--ease);
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+
+/* The backdrop is blurred where the browser supports it. It is decoration, but it is
+   the cheapest way to make the dialog read as the only live thing on screen. */
 dialog.dialog::backdrop {
-  background: rgba(10, 12, 16, 0.5);
+  background: rgb(9 12 18 / 0.5);
+  animation: fade 0.2s ease;
+}
+
+@supports (backdrop-filter: blur(2px)) {
+  dialog.dialog::backdrop {
+    backdrop-filter: blur(3px);
+  }
 }
 
 .dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
   padding: var(--s4) var(--s5);
   border-bottom: 1px solid var(--border);
 }
 
+.dialog-head h2 {
+  font-size: 1rem;
+  font-weight: 640;
+  letter-spacing: -0.012em;
+}
+
 .dialog-body {
   padding: var(--s5);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: var(--s4);
+  font-size: 0.9375rem;
+  line-height: 1.6;
 }
 
+/* Actions right-aligned, primary last: the reading order matches the commit order, and
+   the destructive option is never the one under the thumb by default. */
 .dialog-foot {
-  padding: var(--s3) var(--s5) var(--s4);
   display: flex;
   justify-content: flex-end;
-  gap: var(--s3);
+  gap: var(--s2);
+  padding: var(--s4) var(--s5);
+  border-top: 1px solid var(--border);
+  background: var(--surface-sunken);
 }
 
-/* -------------------------------------------------------------- data viz */
+/* ---------------------------------------------------------------- data view */
 
-/*
- * The attendance trend and the complaint mix are drawn with divs, not a charting
- * library. Both are single-series comparisons where the shape matters and the exact
- * value is in a tooltip or an adjacent column -- a 40kB chart runtime for that is a
- * dependency to explain, not a feature.
- */
+/* A definition list rendered as a label/value grid. dl/dt/dd rather than a table,
+   because these are facts about one thing, not rows of many. */
+.facts {
+  display: grid;
+  grid-template-columns: minmax(90px, auto) 1fr;
+  gap: var(--s2) var(--s4);
+  align-items: baseline;
+  font-size: 0.875rem;
+}
+
+.fact-label {
+  color: var(--text-faint);
+  font-size: 0.8125rem;
+  font-weight: 560;
+}
+
+.fact-value {
+  color: var(--text);
+  font-weight: 560;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Fourteen stacked columns of attendance, drawn with divs and scaled by the caller to
+   the busiest day. An empty track is information -- nobody took the register. */
 .bars {
   display: flex;
   align-items: flex-end;
-  gap: 3px;
-  height: 120px;
+  gap: 5px;
+  height: 132px;
+  padding: var(--s2) 0;
 }
 
 .bar-col {
   flex: 1;
-  min-width: 6px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   height: 100%;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  overflow: hidden;
+  border-radius: var(--radius-xs);
   background: var(--surface-sunken);
+  overflow: hidden;
+  cursor: default;
+  transition: outline-color var(--fast) ease;
+  outline: 1px solid transparent;
 }
 
+.bar-col:hover {
+  outline-color: var(--border-strong);
+}
+
+/* Present sits at the bottom because it is the baseline the eye follows across the
+   fortnight; absent stacks above it, in the colour that means "look here". */
 .bar-present {
-  background: var(--accent);
+  background: var(--viz);
+  min-height: 2px;
 }
 
 .bar-absent {
   background: var(--danger);
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
 }
 
 .bar-axis {
@@ -1097,25 +2122,24 @@ dialog.dialog::backdrop {
   justify-content: space-between;
   font-size: 0.6875rem;
   color: var(--text-faint);
-  margin-top: var(--s1);
+  font-variant-numeric: tabular-nums;
 }
 
-/* A horizontal meter, for occupancy and collection rate. */
+/* A progress track. Used for fee collection and for occupancy; the fill colour is the
+   caller's decision because the thresholds differ between the two. */
 .meter {
-  /* `display: block` so the track works as a <span> too -- a bare inline element
-     ignores height, which would silently render the meter as a hairline. */
-  display: block;
-  height: 6px;
+  height: 8px;
   border-radius: var(--radius-pill);
   background: var(--surface-sunken);
   overflow: hidden;
+  border: 1px solid var(--border-subtle);
 }
 
 .meter-fill {
-  display: block;
   height: 100%;
-  background: var(--accent);
   border-radius: var(--radius-pill);
+  background: var(--brand-gradient);
+  transition: width 0.5s var(--ease);
 }
 
 .meter-fill-warning {
@@ -1126,14 +2150,15 @@ dialog.dialog::backdrop {
   background: var(--danger);
 }
 
-/* --------------------------------------------------------------- utilities */
+/* -------------------------------------------------------------- utilities */
 
 /*
- * A short, closed list. These exist because writing a one-off class for "these two
- * things sit in a row" produces a stylesheet nobody can navigate. It stops here:
- * anything that needs a third property gets a named component class instead, which
- * is the line a utility framework does not draw.
+ * A deliberately short list. These are layout primitives that would otherwise be
+ * repeated verbatim in thirty files -- not a utility framework. The test for adding
+ * one: it must be a shape, never a value. `.stack` is a shape; `.mt-3` would be a
+ * value, and would move the design into the markup.
  */
+
 .stack {
   display: flex;
   flex-direction: column;
@@ -1184,39 +2209,18 @@ dialog.dialog::backdrop {
   font-size: 0.8125rem;
 }
 
-.nowrap {
-  white-space: nowrap;
-}
-
 .right {
   margin-left: auto;
 }
 
-.nums {
-  font-variant-numeric: tabular-nums;
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-feature-settings: normal;
 }
 
-/* A definition list used for detail pages: label above value, in a wrapping grid. */
-.facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--s4);
-}
-
-.fact-label {
-  font-size: 0.75rem;
-  font-weight: 620;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-faint);
-}
-
-.fact-value {
-  font-size: 0.9375rem;
-}
-
-/* Screen-reader-only: for the label of a control whose purpose is obvious visually
-   from position alone, such as a search box with a magnifier. */
+/* Screen-reader-only: for the label of a control whose purpose is obvious visually from
+   position alone, such as a search box with a magnifier beside it. */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -1229,41 +2233,522 @@ dialog.dialog::backdrop {
   border: 0;
 }
 
-/* ------------------------------------------------------------ login screen */
+/* Skip link: hidden until focused, then the first thing the keyboard reaches. */
+.skip-link {
+  position: absolute;
+  left: var(--s4);
+  top: -60px;
+  z-index: 100;
+  padding: 9px var(--s4);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+  transition: top var(--fast) var(--ease);
+}
+
+.skip-link:focus-visible {
+  top: var(--s4);
+  text-decoration: none;
+}
+
+/* ------------------------------------------------------------- auth screen */
 
 /*
- * The one page with no shell: it is the only route reachable while anonymous, so it
- * cannot use the nav, and centring it is the clearest signal that nothing else is
- * available yet.
+ * The one route reachable while anonymous, so it cannot use the shell -- and the only
+ * screen a buyer sees before they have an account, so it is the one that has to look
+ * finished.
+ *
+ * Split in two on a wide screen: the form on the left at a comfortable reading width,
+ * a branded panel on the right that says what the product is. Below 900px the panel is
+ * gone entirely rather than stacked -- on a phone it would push the password field
+ * below the fold, and marketing copy is not worth a scroll to sign in.
  */
 .auth-page {
   min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1fr;
+  background: var(--canvas);
+}
+
+@media (min-width: 900px) {
+  .auth-page {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.auth-form-side {
+  display: grid;
+  place-items: center;
+  padding: var(--s6) var(--s5);
+}
+
+.auth-card {
+  width: min(400px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+
+.auth-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-bottom: var(--s2);
+  font-weight: 660;
+  font-size: 0.9375rem;
+  letter-spacing: -0.01em;
+}
+
+.auth-title {
+  font-size: 1.625rem;
+  font-weight: 700;
+  letter-spacing: -0.028em;
+  line-height: 1.2;
+}
+
+.auth-sub {
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.auth-form .btn {
+  height: 42px;
+  font-size: 0.9375rem;
+}
+
+.auth-foot {
+  font-size: 0.8125rem;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+/* The branded half. A gradient, a grid of hairlines, and three claims the rest of the
+   product has to live up to. No image: an asset to load is an asset to lose, and this
+   renders identically on a first visit with a cold cache. */
+.auth-brand-side {
+  display: none;
+  position: relative;
+  overflow: hidden;
+  background: var(--brand-gradient);
+  color: #fff;
+  padding: var(--s8) var(--s7);
+  align-content: center;
+}
+
+@media (min-width: 900px) {
+  .auth-brand-side {
+    display: grid;
+  }
+}
+
+/* Two decorative layers: a 32px grid and a soft radial highlight. Both aria-hidden by
+   virtue of being pseudo-elements, so neither reaches a screen reader. */
+.auth-brand-side::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(rgb(255 255 255 / 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.07) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(120% 90% at 70% 20%, #000 25%, transparent 75%);
+}
+
+.auth-brand-side::after {
+  content: '';
+  position: absolute;
+  inset: auto -12% -35% -12%;
+  height: 70%;
+  background: radial-gradient(60% 100% at 50% 100%, rgb(255 255 255 / 0.22), transparent 70%);
+}
+
+.auth-brand-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 42ch;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+
+.auth-pitch {
+  font-size: 1.75rem;
+  font-weight: 660;
+  letter-spacing: -0.03em;
+  line-height: 1.22;
+}
+
+.auth-points {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+.auth-point {
+  display: flex;
+  gap: var(--s3);
+  align-items: flex-start;
+  color: rgb(255 255 255 / 0.88);
+}
+
+.auth-point-mark {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgb(255 255 255 / 0.16);
+  border: 1px solid rgb(255 255 255 / 0.22);
+  color: #fff;
+  margin-top: 1px;
+}
+
+/* The dev-only account hint under the form. Bordered and labelled so nobody mistakes
+   it for part of the product -- it is compiled out of a production build. */
+.auth-hint {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--s3);
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  line-height: 1.6;
+  background: var(--surface-sunken);
+}
+
+.auth-hint code {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+/* --------------------------------------------------------- command palette */
+
+/*
+ * Cmd-K over the routes the signed-in user can actually reach. It is a shortcut, never
+ * the only way to something: every entry in it is also a link in the sidebar, so a user
+ * who never learns the shortcut loses nothing.
+ */
+.palette-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgb(9 12 18 / 0.45);
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding: max(9vh, var(--s6)) var(--s4) var(--s6);
+  animation: fade 0.14s ease;
+}
+
+@supports (backdrop-filter: blur(2px)) {
+  .palette-scrim {
+    backdrop-filter: blur(3px);
+  }
+}
+
+.palette {
+  width: min(560px, 100%);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: pop 0.16s var(--ease);
+}
+
+.palette-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+}
+
+/* The search field carries no border of its own: the row is the control, and a second
+   rectangle inside it would just be noise. */
+.palette-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  color: var(--text);
+  padding: 5px 0;
+}
+
+.palette-input:focus {
+  outline: none;
+}
+
+.palette-input::placeholder {
+  color: var(--text-faint);
+}
+
+.palette-list {
+  max-height: min(52vh, 380px);
+  overflow-y: auto;
+  padding: var(--s2);
+}
+
+.palette-group {
+  padding: var(--s2) var(--s2) 5px;
+  font-size: 0.6875rem;
+  font-weight: 680;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+/* Rows are driven by aria-selected rather than :hover, because the keyboard is the
+   point of a palette -- the mouse just happens to also work. */
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  padding: 9px var(--s3);
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.palette-item[aria-selected='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.palette-item-icon {
+  flex: none;
+  display: flex;
+  color: var(--text-faint);
+}
+
+.palette-item[aria-selected='true'] .palette-item-icon {
+  color: var(--accent);
+}
+
+.palette-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-item-area {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  flex: none;
+}
+
+.palette-empty {
+  padding: var(--s5) var(--s4);
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-faint);
+}
+
+.palette-foot {
+  display: flex;
+  gap: var(--s4);
+  padding: 9px var(--s4);
+  border-top: 1px solid var(--border);
+  background: var(--surface-sunken);
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+
+.palette-foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ------------------------------------------------------------------ toasts */
+
+/*
+ * Transient confirmation for a write that changed something off-screen. Never used for
+ * an error: an error needs to stay on the page next to the thing that failed, and a
+ * message that disappears after four seconds is the wrong place for a trace id.
+ */
+.toast-region {
+  position: fixed;
+  z-index: 70;
+  right: var(--s4);
+  bottom: var(--s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  width: min(360px, calc(100vw - 2 * var(--s4)));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  pointer-events: auto;
+  animation: toast-in 0.22s var(--ease);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
+.toast-success .toast-icon {
+  color: var(--success-text);
+}
+
+.toast-info .toast-icon {
+  color: var(--info-text);
+}
+
+.toast-icon {
+  flex: none;
+  display: flex;
+  padding-top: 1px;
+}
+
+.toast-body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------ landing splash */
+
+/* The route at `/`, which exists only to send a signed-in user to their console and an
+   anonymous one to the login. It shows for a fraction of a second, so it is a mark and
+   a line of text -- anything more would be a flash of content nobody reads. */
+.splash {
+  min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: var(--s5);
   background: var(--canvas);
 }
 
-.auth-card {
-  width: min(400px, 100%);
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  padding: var(--s6);
+.splash-inner {
   display: flex;
   flex-direction: column;
-  gap: var(--s4);
+  align-items: center;
+  gap: var(--s3);
+  color: var(--text-muted);
+  font-size: 0.875rem;
 }
 
-.auth-head {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s1);
+.splash-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius);
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  background: var(--brand-gradient);
+  box-shadow: var(--shadow-md);
 }
 
-.auth-title {
-  font-size: 1.375rem;
-  font-weight: 680;
-  letter-spacing: -0.015em;
+/* ------------------------------------------------------------------- print */
+
+/*
+ * A warden prints the day's absence list and the admin prints an audit page. Both are
+ * tables inside cards, so print keeps the table and drops everything that only makes
+ * sense on a screen.
+ */
+@media print {
+  :root {
+    --canvas: #fff;
+    --surface: #fff;
+    --surface-raised: #fff;
+    --surface-sunken: #fff;
+    --text: #000;
+    --text-muted: #333;
+    --text-faint: #555;
+    --border: #bbb;
+    --border-subtle: #ddd;
+  }
+
+  .sidebar,
+  .topbar,
+  .scrim,
+  .toast-region,
+  .palette-scrim,
+  .pager,
+  .filters,
+  .skip-link,
+  .card-actions,
+  .btn {
+    display: none !important;
+  }
+
+  .shell,
+  .content {
+    display: block;
+    padding: 0;
+    margin: 0;
+    max-width: none;
+    animation: none;
+  }
+
+  .card,
+  .table-wrap,
+  .stat {
+    box-shadow: none;
+    border-color: #bbb;
+    break-inside: avoid;
+  }
+
+  /* Repeat the header on every page of a long register, which is the whole reason a
+     printed table is worth anything. */
+  .table thead th {
+    position: static;
+    background: #f2f2f2;
+  }
+
+  .table thead {
+    display: table-header-group;
+  }
+
+  .table tbody tr {
+    break-inside: avoid;
+  }
+
+  a[href]::after {
+    content: '';
+  }
 }

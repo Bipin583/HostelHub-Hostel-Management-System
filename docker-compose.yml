@@ -58,9 +58,9 @@ services:
         # connections -- the backend would crash on the first migration.
         condition: service_healthy
     environment:
-      # `dev` activates DevDataSeeder, which creates admin / lh_warden /
-      # mh_warden and six students. It is idempotent and it seeds nothing at all
-      # unless DEV_SEED_PASSWORD is set.
+      # `dev` activates the demo seeders, which create admin / lh_warden /
+      # mh_warden, 24 students and dashboard-ready sample records. They are
+      # idempotent and seed nothing at all unless DEV_SEED_PASSWORD is set.
       SPRING_PROFILES_ACTIVE: dev
       DEV_SEED_PASSWORD: ${DEV_SEED_PASSWORD:-}
 

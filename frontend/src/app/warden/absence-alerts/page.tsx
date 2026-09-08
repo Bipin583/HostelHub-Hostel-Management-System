@@ -36,10 +36,17 @@ import {
   Notice,
   PageHead,
   Pager,
+  Segmented,
   TableWrap,
 } from '@/components/ui';
+import { IconCheckCircle } from '@/components/icons';
 import { AlertStateBadge } from '@/components/status-badges';
 import type { AbsenceAlert } from '@/lib/types';
+
+const ALERT_VIEWS = [
+  { value: 'open', label: 'Open' },
+  { value: 'all', label: 'All' },
+] as const;
 
 export default function WardenAbsenceAlertsPage() {
   const [showAll, setShowAll] = useState(false);
@@ -93,14 +100,19 @@ export default function WardenAbsenceAlertsPage() {
         title="Absence alerts"
         subtitle="Raised by the nightly scan over the register"
         actions={
-          <Button
-            onClick={() => {
-              setShowAll((current) => !current);
+          /* A segmented control rather than one button whose label flips. A button
+             reading "Show all" is ambiguous -- it could name the current view or the
+             next one -- and there is no way to tell without clicking it. Two segments
+             with `aria-pressed` state which list you are on and which you are not. */
+          <Segmented
+            label="Which alerts to show"
+            value={showAll ? 'all' : 'open'}
+            options={ALERT_VIEWS}
+            onChange={(next) => {
+              setShowAll(next === 'all');
               setPage(0);
             }}
-          >
-            {showAll ? 'Show open only' : 'Show all'}
-          </Button>
+          />
         }
       />
 
@@ -116,7 +128,10 @@ export default function WardenAbsenceAlertsPage() {
         <DataState query={alerts} skeletonRows={8} errorTitle="Could not load alerts">
           {(data) =>
             data.content.length === 0 ? (
-              <EmptyState title={showAll ? 'No alerts have been raised' : 'Nothing open'}>
+              <EmptyState
+                title={showAll ? 'No alerts have been raised' : 'Nothing open'}
+                icon={IconCheckCircle}
+              >
                 {showAll
                   ? 'The scan has not found a qualifying absence streak yet.'
                   : 'Every raised alert has been acknowledged.'}

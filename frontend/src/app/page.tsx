@@ -13,14 +13,15 @@
  * makes Back appear broken.
  *
  * <p>The redirect is in an effect because navigation during render is not permitted.
- * What renders in the meantime is a bare centred message rather than a skeleton: this
- * is a sub-second stop, and a skeleton of a page that will never appear is a lie
+ * What renders in the meantime is the mark and one line of text rather than a skeleton:
+ * this is a sub-second stop, and a skeleton of a page that will never appear is a lie
  * about what is loading.
  */
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { homePathFor, useSession } from '@/lib/auth';
+import { IconLogo } from '@/components/icons';
 
 export default function RootPage() {
   const { status, user } = useSession();
@@ -32,8 +33,15 @@ export default function RootPage() {
   }, [status, user?.role, router]);
 
   return (
-    <main className="auth-page">
-      <p className="muted">Signing you in…</p>
+    <main className="splash">
+      <div className="splash-inner">
+        {/* The mark, on the brand gradient, so the half-second this is up looks
+            deliberate rather than like a page that failed to load. */}
+        <span className="splash-mark" aria-hidden="true">
+          <IconLogo size={26} />
+        </span>
+        <p>Signing you in&hellip;</p>
+      </div>
     </main>
   );
 }

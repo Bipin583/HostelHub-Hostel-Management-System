@@ -28,8 +28,8 @@ import { warden } from '@/lib/endpoints';
 import { useAction, useQuery } from '@/lib/use-query';
 import {
   formatDate,
+  formatFraction,
   formatMoney,
-  formatPercent,
   rupeeInputToPaise,
   todayIso,
 } from '@/lib/format';
@@ -122,7 +122,7 @@ export default function WardenFeesPage() {
                       <td className="num nums">{formatMoney(term.billedPaise)}</td>
                       <td className="num nums">{formatMoney(term.collectedPaise)}</td>
                       <td className="num nums">{formatMoney(term.outstandingPaise)}</td>
-                      <td className="num nums">{formatPercent(term.collectionRate, 1)}</td>
+                      <td className="num nums">{formatFraction(term.collectionRate, 1)}</td>
                     </tr>
                   ))}
                   <tr>
@@ -136,7 +136,7 @@ export default function WardenFeesPage() {
                       {formatMoney(data.totals.outstandingPaise)}
                     </td>
                     <td className="num nums cell-strong">
-                      {formatPercent(data.totals.collectionRate, 1)}
+                      {formatFraction(data.totals.collectionRate, 1)}
                     </td>
                   </tr>
                 </tbody>
