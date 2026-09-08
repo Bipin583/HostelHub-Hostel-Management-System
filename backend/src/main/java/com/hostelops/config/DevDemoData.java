@@ -156,7 +156,8 @@ public class DevDemoData implements ApplicationRunner {
                 attendance.setStudent(student);
                 attendance.setAttendanceDate(markedDays.get(dayIndex));
                 attendance.setMarkedBy(wardenFor(student, lhWarden, mhWarden));
-                boolean absent = studentIndex == 0 || (studentIndex + dayIndex) % 9 == 0;
+                boolean absent = studentIndex == 0 || studentIndex == 1 || studentIndex == 12
+                        || (studentIndex + dayIndex) % 9 == 0;
                 attendance.setStatus(absent ? AttendanceStatus.ABSENT : AttendanceStatus.PRESENT);
                 entityManager.persist(attendance);
             }
@@ -187,9 +188,10 @@ public class DevDemoData implements ApplicationRunner {
             fee.setAmountPaise(TERM_FEE_PAISE);
             fee.setDueDate(index < 14 ? today.minusDays(10) : today.plusDays(20));
             fee.setDescription("Accommodation, utilities and common-area maintenance.");
-            if (index < 8) {
+            int withinGender = index % 12;
+            if (withinGender < 4) {
                 settleFee(fee, student, TERM_FEE_PAISE, "paid", index, now);
-            } else if (index < 12) {
+            } else if (withinGender < 6) {
                 settleFee(fee, student, 2_000_000L, "part", index, now);
             }
             entityManager.persist(fee);
