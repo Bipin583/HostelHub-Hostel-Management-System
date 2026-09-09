@@ -44,7 +44,7 @@ covers the console, including the one setting that trips everybody up
 
 ```
 backend/     Spring Boot — 189 source files, 26 controllers, 72 endpoints
-frontend/    Next.js App Router — 28 routes, 46 source files
+frontend/    Next.js App Router — 29 routes, 47 source files
 docs/        concurrency.md
 ```
 

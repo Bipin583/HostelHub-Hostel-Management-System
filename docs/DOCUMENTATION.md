@@ -972,10 +972,11 @@ system makes, and tests, is about the *decision* to send: once per invoice per d
 | `/warden/complaints` | warden | Queue, filters, analytics |
 | `/warden/complaints/[id]` | warden | One complaint; move its status |
 | `/warden/notices` | warden | Post and withdraw notices |
+| `/admin` | admin | Operations overview: 24h telemetry, job status, live audit feed |
 | `/admin/audit` | admin | The audit trail: by entity, by actor, or whole |
 | `/admin/jobs` | admin | Re-run either nightly job for a chosen date |
 
-28 route files in total. A signed-in user who types another console's URL is redirected by
+29 route files in total. A signed-in user who types another console's URL is redirected by
 the client *and* refused by the server - the client redirect is a convenience, the 403 is
 the actual boundary.
 

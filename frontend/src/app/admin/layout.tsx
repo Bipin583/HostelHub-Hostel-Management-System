@@ -15,13 +15,14 @@
  */
 
 import { AppShell, type NavSection } from '@/components/app-shell';
-import { IconClock, IconExternal, IconHistory } from '@/components/icons';
+import { IconClock, IconDashboard, IconExternal, IconHistory } from '@/components/icons';
 import { useRequireRole } from '@/lib/auth';
 
 const SECTIONS: NavSection[] = [
   {
     label: 'Operations',
     items: [
+      { href: '/admin', label: 'Overview', icon: IconDashboard },
       { href: '/admin/jobs', label: 'Scheduled jobs', icon: IconClock },
       { href: '/admin/audit', label: 'Audit log', icon: IconHistory },
     ],
