@@ -77,7 +77,7 @@ export { sessionLogin as login, sessionLogout as logout };
 export function homePathFor(role: Role | null | undefined): string {
   switch (role) {
     case 'ADMIN':
-      return '/admin/jobs';
+      return '/admin';
     case 'WARDEN':
       return '/warden';
     case 'STUDENT':
