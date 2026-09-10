@@ -18,7 +18,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { admin } from '@/lib/endpoints';
 import { useAction, useQuery } from '@/lib/use-query';
-import { formatDate, formatDateTime, humanise, todayIso } from '@/lib/format';
+import { formatDate, formatDateTime, formatRelativeTime, humanise, todayIso } from '@/lib/format';
 import type { AbsenceScanResult, AuditAction, FeeReminderRun } from '@/lib/types';
 import {
   Badge,
@@ -249,7 +249,12 @@ export default function AdminOverviewPage() {
                   <tbody>
                     {data.content.map((ev) => (
                       <tr key={ev.id}>
-                        <td className="small muted">{formatDateTime(ev.createdAt)}</td>
+                        <td className="small muted" title={formatDateTime(ev.createdAt)}>
+                          <span>{formatRelativeTime(ev.createdAt)}</span>
+                          <span className="faint" style={{ display: 'block', fontSize: '0.75rem' }}>
+                            {formatDateTime(ev.createdAt)}
+                          </span>
+                        </td>
                         <td>
                           {ev.actorName ? (
                             <span style={{ fontWeight: 500 }}>{ev.actorName}</span>

@@ -122,6 +122,33 @@ export function formatDateTime(isoInstant: string | null | undefined): string {
   return `${day} ${month} ${year}, ${hours}:${minutes}`;
 }
 
+/**
+ * Format an ISO instant into a human-friendly relative time string
+ * (e.g. "just now", "5m ago", "2h ago", "yesterday", or "15 May 2026").
+ *
+ * <p>Safe from server/client hydration mismatches when rendered inside
+ * components whose data arrives client-side after initial mount.
+ */
+export function formatRelativeTime(isoInstant: string | null | undefined): string {
+  if (!isoInstant) return '--';
+  const at = new Date(isoInstant);
+  const timeMs = at.getTime();
+  if (Number.isNaN(timeMs)) return '--';
+
+  const diffSeconds = Math.floor((Date.now() - timeMs) / 1000);
+  if (diffSeconds < 45) return 'just now';
+  if (diffSeconds < 90) return '1m ago';
+  if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
+  if (diffSeconds < 7200) return '1h ago';
+  if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h ago`;
+  if (diffSeconds < 172800) return 'yesterday';
+
+  const days = Math.floor(diffSeconds / 86400);
+  if (days < 30) return `${days}d ago`;
+
+  return formatDate(isoInstant.slice(0, 10));
+}
+
 /** Today as `"YYYY-MM-DD"` in local terms -- the format every date endpoint takes. */
 export function todayIso(): string {
   return toIsoDate(new Date());
